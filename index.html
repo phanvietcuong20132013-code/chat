@@ -9,10 +9,11 @@
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f0f2f5; }
         .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        #chat-box { border: 1px solid #ddd; height: 300px; overflow-y: auto; padding: 10px; margin: 15px 0; background: #fafafa; border-radius: 4px; }
-        .my-msg { text-align: right; color: #0084ff; margin: 5px 0; font-weight: bold; }
-        .their-msg { text-align: left; color: #28a745; margin: 5px 0; font-weight: bold; }
-        .sys-msg { text-align: center; color: #888; font-style: italic; margin: 5px 0; font-size: 0.9em; }
+        #chat-box { border: 1px solid #ddd; height: 300px; overflow-y: auto; padding: 10px; margin: 15px 0; background: #fafafa; border-radius: 4px; display: flex; flex-direction: column; gap: 5px; }
+        .msg { padding: 8px 12px; border-radius: 15px; max-width: 75%; word-wrap: break-word; font-weight: bold; font-size: 0.95em; }
+        .my-msg { align-self: flex-end; background-color: #0084ff; color: white; border-bottom-right-radius: 2px; }
+        .their-msg { align-self: flex-start; background-color: #e4e6eb; color: #050505; border-bottom-left-radius: 2px; }
+        .sys-msg { text-align: center; color: #888; font-style: italic; margin: 5px 0; font-size: 0.9em; align-self: center; }
         input, button { padding: 10px; border-radius: 4px; border: 1px solid #ddd; }
         input[type="text"] { width: 70%; }
         button { background: #0084ff; color: white; border: none; cursor: pointer; font-weight: bold; }
@@ -42,18 +43,18 @@
 </div>
 
 <script>
-    // Cấu hình một server Firebase public dùng chung miễn phí
+    // Server Firebase public dùng chung miễn phí
     const firebaseConfig = {
         databaseURL: "https://chat-free-database-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
     
-    // Khởi tạo Firebase
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    let myId = 'user_' + Math.floor(Math.random() * 10000);
+    // Tạo ID ngẫu nhiên cho phiên duyệt web hiện tại
+    let myId = 'user_' + Math.floor(Math.random() * 100000);
     let currentRoom = "";
-    let roomRef;
+    let roomRef = null;
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -68,26 +69,28 @@
         if (!room) return alert("Vui lòng nhập mã phòng!");
         
         currentRoom = room;
-        chatBox.innerHTML = ''; // Xóa màn hình cũ
+        chatBox.innerHTML = ''; 
         appendLog(`Hệ thống: Đang kết nối vào phòng [${room}]...`);
 
-        // Kết nối tới đường dẫn phòng trên Google Server
         roomRef = database.ref('rooms/' + room);
 
-        // Lắng nghe tin nhắn mới (Tự động kích hoạt khi có dữ liệu mới)
+        // Hủy lắng nghe cũ nếu có để tránh lặp tin nhắn
+        roomRef.off();
+
+        // Lắng nghe dữ liệu thời gian thực từ Google Server
         roomRef.limitToLast(50).on('child_added', (snapshot) => {
             const data = snapshot.val();
-            // Bỏ qua tin nhắn thông báo hệ thống kết nối thành công ban đầu
-            if(data.system) return; 
+            if(!data || data.system) return; 
 
+            // So sánh trực tiếp ID để phân loại hiển thị
             if (data.sender === myId) {
-                appendMessage(data.text, 'my-msg');
+                appendMessage(data.text, 'msg my-msg');
             } else {
-                appendMessage(data.text, 'their-msg');
+                appendMessage(data.text, 'msg their-msg');
             }
         });
 
-        appendLog(`Hệ thống: Đã vào phòng [${room}] thành công! Chúc bạn chat vui vẻ.`);
+        appendLog(`Hệ thống: Đã vào phòng [${room}] thành công!`);
         msgInput.disabled = false;
         sendBtn.disabled = false;
         roomInput.disabled = true;
@@ -98,7 +101,7 @@
         const msg = msgInput.value.trim();
         if (!msg || !roomRef) return;
 
-        // Đẩy tin nhắn lên server Google
+        // Đẩy thẳng dữ liệu lên đám mây của Google
         roomRef.push({
             sender: myId,
             text: msg,
