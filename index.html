@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Chat Toàn Cầu Khác Mạng</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f0f2f5; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        #chat-box { border: 1px solid #ddd; height: 300px; overflow-y: auto; padding: 10px; margin: 15px 0; background: #fafafa; border-radius: 4px; }
+        .my-msg { text-align: right; color: #0084ff; margin: 5px 0; font-weight: bold; }
+        .their-msg { text-align: left; color: #28a745; margin: 5px 0; font-weight: bold; }
+        .sys-msg { text-align: center; color: #888; font-style: italic; margin: 5px 0; font-size: 0.9em; }
+        input, button { padding: 10px; border-radius: 4px; border: 1px solid #ddd; }
+        input[type="text"] { width: 70%; }
+        button { background: #0084ff; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0066cc; }
+        .status-box { background: #e7f3ff; padding: 10px; border-radius: 4px; font-size: 0.9em; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>App Chat Toàn Cầu (Khác Mạng)</h2>
+    
+    <div class="status-box">
+        <div><strong>Mã Phòng (Nhập giống nhau để chat chung):</strong></div>
+        <div style="display: flex; gap: 5px; margin-top: 5px;">
+            <input type="text" id="room-id" placeholder="Ví dụ: 9090">
+            <button id="join-btn" onclick="joinRoom()">Vào Phòng</button>
+        </div>
+    </div>
+
+    <div id="chat-box"></div>
+    
+    <div style="display: flex; gap: 5px;">
+        <input type="text" id="message-text" placeholder="Nhập tin nhắn..." autocomplete="off" disabled>
+        <button id="send-btn" onclick="sendMessage()" disabled style="width: 25%;">Gửi</button>
+    </div>
+</div>
+
+<script>
+    let ws;
+    let myId = 'user_' + Math.floor(Math.random() * 10000);
+    let currentRoom = "";
+
+    const chatBox = document.getElementById('chat-box');
+    const msgInput = document.getElementById('message-text');
+    const sendBtn = document.getElementById('send-btn');
+    const roomInput = document.getElementById('room-id');
+    const joinBtn = document.getElementById('join-btn');
+
+    appendLog("Hệ thống: Vui lòng nhập mã phòng và bấm 'Vào Phòng'.");
+
+    function joinRoom() {
+        const room = roomInput.value.trim();
+        if (!room) return alert("Vui lòng nhập mã phòng!");
+        
+        currentRoom = room;
+        appendLog("Hệ thống: Đang kết nối đến server toàn cầu...");
+        
+        // Sử dụng Server WebSocket miễn phí công cộng ổn định của SLYK
+        const serverUrl = `wss://connect.slyk.io/ws?room=${room}`;
+        
+        ws = new WebSocket(serverUrl);
+
+        ws.onopen = () => {
+            appendLog(`Hệ thống: Đã vào phòng [${room}] thành công!`);
+            msgInput.disabled = false;
+            sendBtn.disabled = false;
+            roomInput.disabled = true;
+            joinBtn.disabled = true;
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.sender !== myId) {
+                    appendMessage(data.text, 'their-msg');
+                }
+            } catch (e) {
+                // Hỗ trợ nếu dữ liệu nhận về là text thuần
+                appendMessage(event.data, 'their-msg');
+            }
+        };
+
+        ws.onclose = () => {
+            appendLog("Hệ thống: Mất kết nối phòng. Đang tự động kết nối lại...");
+            msgInput.disabled = true;
+            sendBtn.disabled = true;
+            roomInput.disabled = false;
+            joinBtn.disabled = false;
+            // Tự động kết nối lại sau 2 giây nếu bị ngắt
+            setTimeout(joinRoom, 2000);
+        };
+
+        ws.onerror = () => {
+            appendLog("Hệ thống: Lỗi đường truyền.");
+        };
+    }
+
+    function sendMessage() {
+        const msg = msgInput.value.trim();
+        if (!msg || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+        const packet = { sender: myId, text: msg };
+        ws.send(JSON.stringify(packet));
+        
+        appendMessage(msg, 'my-msg');
+        msgInput.value = '';
+    }
+
+    function appendMessage(text, className) {
+        const div = document.createElement('div');
+        div.className = className;
+        div.textContent = text;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function appendLog(text) {
+        const div = document.createElement('div');
+        div.className = 'sys-msg';
+        div.textContent = text;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    msgInput.addEventListener("keypress", function(event) {
+        if (event.key === "Enter") sendMessage();
+    });
+</script>
+
+</body>
+</html>
