@@ -52,7 +52,7 @@
 </div>
 
 <script>
-    // Điền link database Firebase đang chạy rất tốt của bạn
+    // Link database Firebase cá nhân của bạn
     const firebaseConfig = {
         databaseURL: "https://web-chat-cua-toi-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
@@ -94,7 +94,7 @@
             let isMe = (data.sender === myId);
             let className = isMe ? 'msg my-msg' : 'msg their-msg';
             
-            // Xử lý hiển thị nếu tin nhắn là định dạng File/Ảnh
+            // Xử lý hiển thị nếu tin nhắn là định dạng File hoặc Ảnh
             if (data.type === 'file') {
                 appendFileMessage(data.text, className, data.fileUrl, data.isImage);
             } else {
@@ -123,7 +123,7 @@
         msgInput.value = '';
     }
 
-    // Hàm xử lý tải và truyền dữ liệu thông minh không qua Proxy
+    // Hàm tải file đa tầng thông minh không qua Proxy
     function uploadFileFile(input) {
         const file = input.files[0];
         if (!file || !roomRef) return;
@@ -164,42 +164,80 @@
             })
             .catch(error => {
                 console.error(error);
-                uploadStatus.textContent = "Lỗi mạng!";
+                uploadStatus.textContent = "Lỗi kết nối!";
                 fileInput.disabled = false;
             });
 
         } else {
-            // ---- NẾU LÀ FILE TÀI LIỆU (PDF, Word...): Upload thẳng lên file.io ----
-            const formData = new FormData();
-            formData.append("file", file);
+            // ---- NẾU LÀ FILE TÀI LIỆU (PDF, Word...): Tải lên GoFile ----
+            // Bước 1: Hỏi lấy server trống tốt nhất của GoFile
+            fetch("https://api.gofile.io/servers")
+            .then(res => res.json())
+            .then(serverData => {
+                if (!serverData || serverData.status !== "ok" || !serverData.data.servers.length) {
+                    throw new Error("GoFile nghẽn mạng");
+                }
+                
+                const bestServer = serverData.data.servers[0].name;
+                const formData = new FormData();
+                formData.append("file", file);
 
-            fetch("https://file.io", {
-                method: "POST",
-                body: formData
+                // Bước 2: Đẩy trực tiếp file lên cụm server đó
+                return fetch(`https://${bestServer}.gofile.io/contents/uploadfile`, {
+                    method: "POST",
+                    body: formData
+                });
             })
             .then(response => response.json())
             .then(result => {
-                if (result.success && result.link) {
+                if (result.status === "ok" && result.data.downloadPage) {
                     roomRef.push({
                         sender: myId,
                         text: file.name,
                         type: 'file',
-                        fileUrl: result.link,
+                        fileUrl: result.data.downloadPage,
                         isImage: false,
                         timestamp: Date.now()
                     });
                     uploadStatus.textContent = "Thành công!";
                 } else {
-                    uploadStatus.textContent = "Lỗi server đầy!";
+                    throw new Error("Lỗi phản hồi từ GoFile");
                 }
                 fileInput.disabled = false;
                 fileInput.value = "";
                 setTimeout(() => { uploadStatus.textContent = ""; }, 2000);
             })
             .catch(error => {
-                console.error(error);
-                uploadStatus.textContent = "Lỗi đường truyền!";
-                fileInput.disabled = false;
+                console.warn("Chuyển sang cổng dự án phụ Transfer.sh do GoFile bận...", error);
+                // ---- CỔNG DỰ PHÒNG 2: Nếu GoFile trục trặc, đẩy trực tiếp lên Transfer.sh ----
+                fetch("https://transfer.sh/", {
+                    method: "POST",
+                    body: file
+                })
+                .then(res => res.text())
+                .then(link => {
+                    if(link.startsWith("https://")) {
+                        roomRef.push({
+                            sender: myId,
+                            text: file.name,
+                            type: 'file',
+                            fileUrl: link,
+                            isImage: false,
+                            timestamp: Date.now()
+                        });
+                        uploadStatus.textContent = "Thành công!";
+                    } else {
+                        uploadStatus.textContent = "Lỗi đường truyền!";
+                    }
+                    fileInput.disabled = false;
+                    fileInput.value = "";
+                    setTimeout(() => { uploadStatus.textContent = ""; }, 2000);
+                })
+                .catch(err => {
+                    console.error(err);
+                    uploadStatus.textContent = "Lỗi đường truyền!";
+                    fileInput.disabled = false;
+                });
             });
         }
     }
@@ -219,7 +257,7 @@
         if (isImage) {
             div.innerHTML = `📁 Ảnh: <a href="${fileUrl}" target="_blank" class="file-link"><img src="${fileUrl}" class="chat-img"/></a>`;
         } else {
-            div.innerHTML = `📁 File PDF/Tài liệu:<br><a href="${fileUrl}" target="_blank" class="file-link" style="color:#d63031;">👉 ${fileName} (Bấm để tải về)</a>`;
+            div.innerHTML = `📁 File Tài liệu:<br><a href="${fileUrl}" target="_blank" class="file-link" style="color:#ffea00; text-decoration: underline;">👉 ${fileName} (Bấm vào để tải)</a>`;
         }
         
         chatBox.appendChild(div);
