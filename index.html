@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>App Chat Toàn Cầu Khác Mạng</title>
+    <title>App Chat Toàn Cầu Siêu Ổn Định</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f0f2f5; }
         .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -21,7 +23,7 @@
 <body>
 
 <div class="container">
-    <h2>App Chat Toàn Cầu (Khác Mạng)</h2>
+    <h2>App Chat Toàn Cầu (Google Firebase)</h2>
     
     <div class="status-box">
         <div><strong>Mã Phòng (Nhập giống nhau để chat chung):</strong></div>
@@ -40,9 +42,18 @@
 </div>
 
 <script>
-    let ws;
+    // Cấu hình một server Firebase public dùng chung miễn phí
+    const firebaseConfig = {
+        databaseURL: "https://chat-free-database-default-rtdb.asia-southeast1.firebasedatabase.app"
+    };
+    
+    // Khởi tạo Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
     let myId = 'user_' + Math.floor(Math.random() * 10000);
     let currentRoom = "";
+    let roomRef;
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -50,63 +61,50 @@
     const roomInput = document.getElementById('room-id');
     const joinBtn = document.getElementById('join-btn');
 
-    appendLog("Hệ thống: Vui lòng nhập mã phòng và bấm 'Vào Phòng'.");
+    appendLog("Hệ thống: Sẵn sàng kết nối. Hãy nhập mã phòng!");
 
     function joinRoom() {
         const room = roomInput.value.trim();
         if (!room) return alert("Vui lòng nhập mã phòng!");
         
         currentRoom = room;
-        appendLog("Hệ thống: Đang kết nối đến server toàn cầu...");
-        
-        // Sử dụng Server WebSocket miễn phí công cộng ổn định của SLYK
-        const serverUrl = `wss://connect.slyk.io/ws?room=${room}`;
-        
-        ws = new WebSocket(serverUrl);
+        chatBox.innerHTML = ''; // Xóa màn hình cũ
+        appendLog(`Hệ thống: Đang kết nối vào phòng [${room}]...`);
 
-        ws.onopen = () => {
-            appendLog(`Hệ thống: Đã vào phòng [${room}] thành công!`);
-            msgInput.disabled = false;
-            sendBtn.disabled = false;
-            roomInput.disabled = true;
-            joinBtn.disabled = true;
-        };
+        // Kết nối tới đường dẫn phòng trên Google Server
+        roomRef = database.ref('rooms/' + room);
 
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.sender !== myId) {
-                    appendMessage(data.text, 'their-msg');
-                }
-            } catch (e) {
-                // Hỗ trợ nếu dữ liệu nhận về là text thuần
-                appendMessage(event.data, 'their-msg');
+        // Lắng nghe tin nhắn mới (Tự động kích hoạt khi có dữ liệu mới)
+        roomRef.limitToLast(50).on('child_added', (snapshot) => {
+            const data = snapshot.val();
+            // Bỏ qua tin nhắn thông báo hệ thống kết nối thành công ban đầu
+            if(data.system) return; 
+
+            if (data.sender === myId) {
+                appendMessage(data.text, 'my-msg');
+            } else {
+                appendMessage(data.text, 'their-msg');
             }
-        };
+        });
 
-        ws.onclose = () => {
-            appendLog("Hệ thống: Mất kết nối phòng. Đang tự động kết nối lại...");
-            msgInput.disabled = true;
-            sendBtn.disabled = true;
-            roomInput.disabled = false;
-            joinBtn.disabled = false;
-            // Tự động kết nối lại sau 2 giây nếu bị ngắt
-            setTimeout(joinRoom, 2000);
-        };
-
-        ws.onerror = () => {
-            appendLog("Hệ thống: Lỗi đường truyền.");
-        };
+        appendLog(`Hệ thống: Đã vào phòng [${room}] thành công! Chúc bạn chat vui vẻ.`);
+        msgInput.disabled = false;
+        sendBtn.disabled = false;
+        roomInput.disabled = true;
+        joinBtn.disabled = true;
     }
 
     function sendMessage() {
         const msg = msgInput.value.trim();
-        if (!msg || !ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!msg || !roomRef) return;
 
-        const packet = { sender: myId, text: msg };
-        ws.send(JSON.stringify(packet));
+        // Đẩy tin nhắn lên server Google
+        roomRef.push({
+            sender: myId,
+            text: msg,
+            timestamp: Date.now()
+        });
         
-        appendMessage(msg, 'my-msg');
         msgInput.value = '';
     }
 
