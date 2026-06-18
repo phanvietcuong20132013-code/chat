@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>App Chat Pro - Google Drive & Security</title>
+    <title>App Chat Pro - Phân Loại Thư Mục Drive</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <script src="https://apis.google.com/js/api.js"></script>
-    <script src="https://accounts.google.com/gsi/client"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f0f2f5; position: relative; }
         .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
@@ -28,14 +26,11 @@
         button:hover { background: #0066cc; }
         .status-box { background: #e7f3ff; padding: 10px; border-radius: 4px; font-size: 0.9em; line-height: 1.5; }
         .input-area { display: flex; flex-direction: column; gap: 5px; }
-        .drive-btn { background-color: #34a853; font-size: 0.85em; padding: 10px; margin-bottom: 5px; width: 100%; color: white; border: none; cursor: pointer; font-weight: bold; border-radius: 4px;}
-        .drive-btn:hover { background-color: #2b8c44; }
         
-        /* ĐÃ SỬA LỖI: Giao diện màn hình khóa bảo mật chỉ flex khi được kích hoạt */
         #lock-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(240, 242, 245, 0.98); z-index: 9999;
-            display: none; /* Trạng thái mặc định ẩn hoàn toàn, không đè nút */
+            display: none;
             flex-direction: column; align-items: center; justify-content: center;
             border-radius: 8px; gap: 15px; box-sizing: border-box; padding: 20px;
         }
@@ -56,14 +51,11 @@
         </div>
     </div>
 
-    <h2>App Chat Pro & Security</h2>
-    
-    <button id="auth-btn" class="drive-btn" onclick="handleAuthClick()">🔑 Kết nối tài khoản Google Drive của tôi</button>
+    <h2>App Chat Pro - Smart Folders Drive</h2>
 
     <div class="status-box">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <strong>Mã Phòng Chat:</strong>
-            <!-- Nút cài mã PIN bảo mật -->
             <button id="set-pin-btn" onclick="setupPinCode()" style="background: #6c757d; font-size: 0.75em; padding: 4px 8px;">⚙️ Cài mã khóa PIN</button>
         </div>
         <div style="display: flex; gap: 5px; margin-top: 5px;">
@@ -71,7 +63,7 @@
             <button id="join-btn" onclick="joinRoom()">Vào Phòng</button>
         </div>
         <div class="security-area">
-            <span>🛡️ Tự động khóa khi ẩn tab hoặc treo máy quá 1 phút.</span>
+            <span id="drive-status-text">⚡ Hệ thống đang kết nối luồng Drive tự động...</span>
         </div>
     </div>
 
@@ -89,17 +81,13 @@
     </div>
 </div>
 
-<!-- Âm thanh thông báo tin nhắn mặc định -->
 <audio id="notif-sound" src="https://assets.mixkit.co/active_storage/sfx/2357/2357-84.wav" preload="auto"></audio>
 
 <script>
-    // ---- CẤU HÌNH KHÓA CHÍNH XÁC CỦA CƯỜNG ----
+    // ---- CẤU HÌNH THÔNG TIN CỦA CƯỜNG ----
     const firebaseConfig = { databaseURL: "https://web-chat-cua-toi-default-rtdb.asia-southeast1.firebasedatabase.app" };
-    const DRIVE_API_KEY = "AIzaSyD7gJLo5P-pP3EGF-8FMZ-23kCT_dJtLSA"; 
     const DRIVE_CLIENT_ID = "729849119569-jgt238a7tackv3n0ssc3rqbo4nmq6it0.apps.googleusercontent.com";
-    
-    const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file'; 
+    const DRIVE_CLIENT_SECRET = "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"; 
 
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
@@ -107,12 +95,11 @@
     let myId = 'user_' + Math.floor(Math.random() * 100000);
     let currentRoom = "";
     let roomRef = null;
-    let tokenClient;
-    let gapiInited = false;
     let accessToken = null;
-    let appSecurePin = localStorage.getItem("chat_secure_pin") || ""; 
+    let folderIdForRoom = null; // ID của thư mục Google Drive riêng cho phòng chat hiện tại
+    let appSecurePin = localStorage.getItem("chat_secure_pin") || "";
     let isLocked = false;
-    let isFirstLoad = true; 
+    let isFirstLoad = true;
     let idleTimer;
 
     const chatBox = document.getElementById('chat-box');
@@ -122,34 +109,124 @@
     const joinBtn = document.getElementById('join-btn');
     const fileInput = document.getElementById('file-input');
     const uploadStatus = document.getElementById('upload-status');
-    const authBtn = document.getElementById('auth-btn');
     const lockScreen = document.getElementById('lock-screen');
     const pinInput = document.getElementById('pin-input');
     const notifSound = document.getElementById('notif-sound');
+    const driveStatusText = document.getElementById('drive-status-text');
 
-    // Xin quyền đẩy thông báo nổi
     if (Notification.permission !== "granted" && Notification.permission !== "denied") {
         Notification.requestPermission();
     }
 
-    // Tải thư viện Google ngầm
-    gapi.load('client', () => {
-        gapi.client.init({ apiKey: DRIVE_API_KEY, discoveryDocs: [DISCOVERY_DOC] }).then(() => { gapiInited = true; });
-    });
-    
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: DRIVE_CLIENT_ID, scope: SCOPES,
-        callback: (resp) => {
-            if (resp.error) return alert("Kết nối Drive thất bại!");
-            accessToken = resp.access_token;
-            authBtn.style.display = 'none';
-            appendLog("Hệ thống: Đã liên kết Google Drive thành công! Bạn có thể chọn gửi file.");
-        },
-    });
+    // Hàm tự động đổi token ngầm
+    function refreshGoogleToken() {
+        return database.ref('system/google_refresh_token').once('value').then((snapshot) => {
+            let savedRefreshToken = snapshot.val();
+            
+            if (!savedRefreshToken) {
+                driveStatusText.innerHTML = "⚠️ Chưa cấu hình Token gốc! <button onclick='setupMasterToken()' style='padding:2px 5px;font-size:11px;background:#ffc107;color:#000;border:none;cursor:pointer;'>Kích hoạt lần đầu</button>";
+                return null;
+            }
 
-    function handleAuthClick() { tokenClient.requestAccessToken({prompt: 'consent'}); }
+            return fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    client_id: DRIVE_CLIENT_ID,
+                    client_secret: DRIVE_CLIENT_SECRET,
+                    refresh_token: savedRefreshToken,
+                    grant_type: 'refresh_token'
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.access_token) {
+                    accessToken = data.access_token;
+                    driveStatusText.textContent = `🟢 Đã kết nối Drive vĩnh viễn (Phòng ${currentRoom})`;
+                    
+                    // Sau khi có token, thực hiện kiểm tra hoặc tạo thư mục cho phòng này ngay ngầm dưới nền
+                    kiemTraHoacTaoThuMucPhong();
+                    return accessToken;
+                } else {
+                    driveStatusText.textContent = "❌ Lỗi làm mới cổng Drive!";
+                    return null;
+                }
+            });
+        });
+    }
 
-    // ĐÃ SỬA LỖI: Đồng bộ hóa sự kiện giải phóng hàng đợi để bật popup mượt mà
+    // TÍNH NĂNG MỚI: Tự động quản lý phân loại thư mục theo từng Phòng trên Google Drive
+    function kiemTraHoacTaoThuMucPhong() {
+        if (!accessToken || !currentRoom) return;
+        
+        let folderName = `Phòng ${currentRoom}`;
+        
+        // 1. Tìm xem thư mục mang tên phòng này đã tồn tại trên Drive chưa
+        let query = encodeURIComponent(`name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
+        fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`, {
+            method: 'GET',
+            headers: new Headers({ 'Authorization': 'Bearer ' + accessToken })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.files && data.files.length > 0) {
+                // Nếu đã có thư mục, lấy luôn ID của nó để dùng
+                folderIdForRoom = data.files[0].id;
+                console.log("Đã tìm thấy thư mục phòng cũ: " + folderIdForRoom);
+            } else {
+                // 2. Nếu chưa có thư mục, tiến hành lệnh TẠO MỚI thư mục riêng cho phòng này
+                fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+                    method: 'POST',
+                    headers: new Headers({ 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({
+                        name: folderName,
+                        mimeType: 'application/vnd.google-apps.folder'
+                    })
+                })
+                .then(res => res.json())
+                .then(newFolder => {
+                    if (newFolder.id) {
+                        folderIdForRoom = newFolder.id;
+                        console.log("Đã tạo thư mục phòng mới thành công: " + folderIdForRoom);
+                    }
+                });
+            }
+        });
+    }
+
+    function setupMasterToken() {
+        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=https://phanvietcuong20132013-code.github.io/chat/app.html&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent`;
+        window.location.href = authUrl;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const authCode = urlParams.get('code');
+    if (authCode) {
+        driveStatusText.textContent = "⚙️ Đang tạo cổng kết nối vĩnh viễn...";
+        fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                code: authCode,
+                client_id: DRIVE_CLIENT_ID,
+                client_secret: DRIVE_CLIENT_SECRET,
+                redirect_uri: 'https://phanvietcuong20132013-code.github.io/chat/app.html',
+                grant_type: 'authorization_code'
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.refresh_token) {
+                database.ref('system/google_refresh_token').set(data.refresh_token).then(() => {
+                    alert("🎉 Tuyệt vời! Đã kích hoạt cổng kết nối Drive vĩnh viễn thành công!");
+                    window.location.href = 'https://phanvietcuong20132013-code.github.io/chat/app.html';
+                });
+            } else {
+                alert("Lỗi cấu hình! Hãy thử bấm lại nút.");
+            }
+        });
+    }
+
     function setupPinCode() {
         setTimeout(() => {
             const newPin = prompt("Nhập mã PIN số gồm 4-6 ký tự bạn muốn cài đặt (Ví dụ: 1234):", appSecurePin);
@@ -165,21 +242,19 @@
         }, 50);
     }
 
-    // Thực thi khóa ứng dụng
     function lockApp() {
-        if (!appSecurePin || isLocked) return; 
+        if (!appSecurePin || isLocked) return;
         isLocked = true;
         lockScreen.style.display = "flex";
         pinInput.value = "";
         pinInput.focus();
     }
 
-    // Mở khóa ứng dụng
     function unlockApp() {
         if (pinInput.value === appSecurePin) {
             isLocked = false;
             lockScreen.style.display = "none";
-            resetIdleTimer(); 
+            resetIdleTimer();
         } else {
             alert("❌ Sai mã PIN mở khóa! Vui lòng nhập lại.");
             pinInput.value = "";
@@ -187,21 +262,19 @@
         }
     }
 
-    // TỰ ĐỘNG KHÓA KHI TREO MÁY KHÔNG HOẠT ĐỘNG 1 PHÚT
     function resetIdleTimer() {
         clearTimeout(idleTimer);
         if (!isLocked) {
-            idleTimer = setTimeout(lockApp, 60000); 
+            idleTimer = setTimeout(lockApp, 60000);
         }
     }
     window.onload = resetIdleTimer;
     window.onmousemove = resetIdleTimer;
-    window.onmousedown = resetIdleTimer; 
+    window.onmousedown = resetIdleTimer;
     window.ontouchstart = resetIdleTimer;
     window.onclick = resetIdleTimer;
     window.onkeydown = resetIdleTimer;
 
-    // TỰ ĐỘNG KHÓA KHI RỜI TAB
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
             lockApp(); 
@@ -220,6 +293,9 @@
 
         isFirstLoad = true;
 
+        // Tự động làm mới token và kích hoạt quét thư mục phòng tương ứng
+        refreshGoogleToken();
+
         roomRef.limitToLast(50).on('child_added', (snapshot) => {
             const data = snapshot.val();
             const msgId = snapshot.key;
@@ -227,7 +303,6 @@
             
             createMessageElement(msgId, data, (data.sender === myId));
 
-            // THÔNG BÁO TIN NHẮN MỚI
             if (!isFirstLoad && data.sender !== myId) {
                 notifSound.play().catch(e => console.log("Chặn âm thanh ngầm"));
                 
@@ -262,12 +337,28 @@
     function uploadToGoogleDrive(input) {
         const file = input.files[0];
         if (!file || !roomRef) return;
-        if (!accessToken) return alert("Vui lòng bấm nút kết nối Google Drive ở phía trên trước!");
+        
+        if (!accessToken) {
+            refreshGoogleToken().then((newToken) => {
+                if (newToken) thựcThiGửiDrive(file);
+                else alert("Lỗi hệ thống kết nối tự động!");
+            });
+        } else {
+            thựcThiGửiDrive(file);
+        }
+    }
 
-        uploadStatus.textContent = "Đang lưu lên Drive...";
+    // ĐÃ NÂNG CẤP BẢN GOM THƯ MỤC THÔNG MINH
+    function thựcThiGửiDrive(file) {
+        uploadStatus.textContent = "Đang phân loại đưa vào thư mục phòng...";
         fileInput.disabled = true;
 
+        // Cấu hình metadata: Gắn thẻ chỉ định đưa file chạy vào thư mục riêng của phòng chat
         const metadata = { name: file.name, mimeType: file.type };
+        if (folderIdForRoom) {
+            metadata.parents = [folderIdForRoom]; // Ép file chui vào đúng thư mục "Phòng XXXX"
+        }
+
         const formData = new FormData();
         formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         formData.append('file', file);
@@ -294,6 +385,7 @@
                 });
             } else {
                 uploadStatus.textContent = "Lỗi up Drive!";
+                accessToken = null;
             }
             fileInput.disabled = false; fileInput.value = "";
             setTimeout(() => { uploadStatus.textContent = ""; }, 2000);
@@ -311,7 +403,7 @@
         divBox.className = isMe ? 'msg my-msg' : 'msg their-msg';
 
         if (data.type === 'file') {
-            divBox.innerHTML = `🤖 File bảo mật từ Drive:<br><a href="${data.fileUrl}" target="_blank" class="file-link" style="color:#ffea00; text-decoration: underline;">👉 ${data.text} (Bấm để xem/tải)</a>`;
+            divBox.innerHTML = `🤖 File phân loại từ thư mục Phòng:<br><a href="${data.fileUrl}" target="_blank" class="file-link" style="color:#ffea00; text-decoration: underline;">👉 ${data.text} (Bấm để xem/tải)</a>`;
         } else { divBox.textContent = data.text; }
 
         wrapper.appendChild(divBox);
@@ -328,7 +420,7 @@
         chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
     }
     msgInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
-    pinInput.addEventListener("keypress", (e) => { if (e.key === "Enter") unlockApp(); }); 
+    pinInput.addEventListener("keypress", (e) => { if (e.key === "Enter") unlockApp(); });
 </script>
 </body>
 </html>
