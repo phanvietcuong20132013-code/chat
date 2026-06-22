@@ -36,12 +36,14 @@
         }
         .lock-title { font-size: 1.2rem; font-weight: bold; color: #333; }
         .security-area { display: flex; justify-content: space-between; align-items: center; background: #fff3cd; border: 1px solid #ffeeba; padding: 8px; border-radius: 4px; margin-top: 5px; font-size: 0.85em; color: #856404;}
+        
+        /* CSS cho dòng thông báo đang soạn tin nhắn */
+        #typing-indicator { font-size: 0.85em; color: #65676b; font-style: italic; margin: 0 0 5px 5px; height: 18px; display: flex; align-items: center; gap: 4px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- MÀN HÌNH KHÓA -->
     <div id="lock-screen">
         <div class="lock-title">🔒 Ứng dụng đang tạm khóa</div>
         <p style="font-size: 0.85em; color: #666; text-align: center; margin: 0 10px;">Bạn vừa rời vị trí hoặc ẩn tab. Nhập mã PIN để tiếp tục chat.</p>
@@ -69,6 +71,8 @@
 
     <div id="chat-box"></div>
     
+    <div id="typing-indicator"></div>
+
     <div class="input-area">
         <div style="display: flex; gap: 5px;">
             <input type="text" id="message-text" placeholder="Nhập tin nhắn..." autocomplete="off" disabled>
@@ -101,6 +105,7 @@
     let isLocked = false;
     let isFirstLoad = true;
     let idleTimer;
+    let typingTimeout; // Bộ đếm thời gian cho tính năng đang soạn tin
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -113,6 +118,7 @@
     const pinInput = document.getElementById('pin-input');
     const notifSound = document.getElementById('notif-sound');
     const driveStatusText = document.getElementById('drive-status-text');
+    const typingIndicator = document.getElementById('typing-indicator');
 
     if (Notification.permission !== "granted" && Notification.permission !== "denied") {
         Notification.requestPermission();
@@ -326,12 +332,21 @@
         appendLog(`Hệ thống: Đã vào phòng [${room}] thành công!`);
         msgInput.disabled = false; sendBtn.disabled = false; fileInput.disabled = false;
         roomInput.disabled = true; joinBtn.disabled = true;
+
+        // Kích hoạt lắng nghe trạng thái soạn tin nhắn của người khác khi vào phòng thành công
+        listenTypingStatus(room);
     }
 
     function sendMessage() {
         const msg = msgInput.value.trim(); if (!msg || !roomRef) return;
         roomRef.push({ sender: myId, text: msg, type: 'text', timestamp: Date.now() });
         msgInput.value = '';
+
+        // Xóa trạng thái đang soạn tin trên Firebase ngay khi nhấn gửi
+        clearTimeout(typingTimeout);
+        if (currentRoom) {
+            database.ref(`typing/${currentRoom}/${myId}`).set(false);
+        }
     }
 
     function uploadToGoogleDrive(input) {
@@ -419,6 +434,56 @@
         const div = document.createElement('div'); div.className = 'sys-msg'; div.textContent = text;
         chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
     }
+
+    // ---- LOGIC XỬ LÝ TRẠNG THÁI ĐANG SOẠN TIN NHẮN (TYPING INDICATOR) ----
+    
+    // 1. Gửi trạng thái "Đang soạn tin..." lên Firebase khi gõ phím
+    msgInput.addEventListener('input', () => {
+        if (!currentRoom || !roomRef) return;
+
+        // Nếu ô nhập liệu có chữ, gửi trạng thái true lên Firebase
+        if (msgInput.value.trim().length > 0) {
+            database.ref(`typing/${currentRoom}/${myId}`).set(true);
+            
+            // Xóa bộ đếm cũ đi để tính lại thời gian chờ mới
+            clearTimeout(typingTimeout);
+
+            // Nếu người dùng dừng gõ quá 1.5 giây, tự chuyển về trạng thái false (ngừng soạn)
+            typingTimeout = setTimeout(() => {
+                database.ref(`typing/${currentRoom}/${myId}`).set(false);
+            }, 1500);
+        } else {
+            // Nếu người dùng xóa hết chữ trong ô nhập, ẩn chữ ngay lập tức
+            database.ref(`typing/${currentRoom}/${myId}`).set(false);
+        }
+    });
+
+    // 2. Lắng nghe Firebase xem có ai khác trong phòng đang soạn tin hay không
+    function listenTypingStatus(room) {
+        const typingRef = database.ref(`typing/${room}`);
+        
+        typingRef.on('value', (snapshot) => {
+            const typingUsers = snapshot.val();
+            let isSomeoneTyping = false;
+
+            if (typingUsers) {
+                // Kiểm tra xem có ID người dùng nào khác mình đang có trạng thái true không
+                Object.keys(typingUsers).forEach((userId) => {
+                    if (userId !== myId && typingUsers[userId] === true) {
+                        isSomeoneTyping = true;
+                    }
+                });
+            }
+
+            // Cập nhật giao diện hiển thị text "Đang soạn tin..."
+            if (isSomeoneTyping) {
+                typingIndicator.innerHTML = `<span>💬 Đang soạn tin...</span>`;
+            } else {
+                typingIndicator.innerHTML = ""; // Ẩn đi khi không có ai gõ
+            }
+        });
+    }
+
     msgInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
     pinInput.addEventListener("keypress", (e) => { if (e.key === "Enter") unlockApp(); });
 </script>
