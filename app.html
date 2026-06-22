@@ -96,16 +96,22 @@
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    let myId = 'user_' + Math.floor(Math.random() * 100000);
+    // SỬA LỖI 1: Giữ cố định ID người dùng trong LocalStorage không lo nhảy cột tin nhắn khi tải lại
+    let myId = localStorage.getItem("chat_my_id");
+    if (!myId) {
+        myId = 'user_' + Math.floor(Math.random() * 100000);
+        localStorage.setItem("chat_my_id", myId);
+    }
+
     let currentRoom = "";
     let roomRef = null;
     let accessToken = null;
-    let folderIdForRoom = null; // ID của thư mục Google Drive riêng cho phòng chat hiện tại
+    let folderIdForRoom = null; 
     let appSecurePin = localStorage.getItem("chat_secure_pin") || "";
     let isLocked = false;
     let isFirstLoad = true;
     let idleTimer;
-    let typingTimeout; // Bộ đếm thời gian cho tính năng đang soạn tin
+    let typingTimeout; 
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -124,7 +130,6 @@
         Notification.requestPermission();
     }
 
-    // Hàm tự động đổi token ngầm
     function refreshGoogleToken() {
         return database.ref('system/google_refresh_token').once('value').then((snapshot) => {
             let savedRefreshToken = snapshot.val();
@@ -149,8 +154,6 @@
                 if (data.access_token) {
                     accessToken = data.access_token;
                     driveStatusText.textContent = `🟢 Đã kết nối Drive vĩnh viễn (Phòng ${currentRoom})`;
-                    
-                    // Sau khi có token, thực hiện kiểm tra hoặc tạo thư mục cho phòng này ngay ngầm dưới nền
                     kiemTraHoacTaoThuMucPhong();
                     return accessToken;
                 } else {
@@ -161,13 +164,9 @@
         });
     }
 
-    // TÍNH NĂNG MỚI: Tự động quản lý phân loại thư mục theo từng Phòng trên Google Drive
     function kiemTraHoacTaoThuMucPhong() {
         if (!accessToken || !currentRoom) return;
-        
         let folderName = `Phòng ${currentRoom}`;
-        
-        // 1. Tìm xem thư mục mang tên phòng này đã tồn tại trên Drive chưa
         let query = encodeURIComponent(`name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
         fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`, {
             method: 'GET',
@@ -176,25 +175,16 @@
         .then(res => res.json())
         .then(data => {
             if (data.files && data.files.length > 0) {
-                // Nếu đã có thư mục, lấy luôn ID của nó để dùng
                 folderIdForRoom = data.files[0].id;
-                console.log("Đã tìm thấy thư mục phòng cũ: " + folderIdForRoom);
             } else {
-                // 2. Nếu chưa có thư mục, tiến hành lệnh TẠO MỚI thư mục riêng cho phòng này
                 fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
                     method: 'POST',
                     headers: new Headers({ 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }),
-                    body: JSON.stringify({
-                        name: folderName,
-                        mimeType: 'application/vnd.google-apps.folder'
-                    })
+                    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder' })
                 })
                 .then(res => res.json())
                 .then(newFolder => {
-                    if (newFolder.id) {
-                        folderIdForRoom = newFolder.id;
-                        console.log("Đã tạo thư mục phòng mới thành công: " + folderIdForRoom);
-                    }
+                    if (newFolder.id) folderIdForRoom = newFolder.id;
                 });
             }
         });
@@ -298,8 +288,6 @@
         roomRef.off();
 
         isFirstLoad = true;
-
-        // Tự động làm mới token và kích hoạt quét thư mục phòng tương ứng
         refreshGoogleToken();
 
         roomRef.limitToLast(50).on('child_added', (snapshot) => {
@@ -333,7 +321,7 @@
         msgInput.disabled = false; sendBtn.disabled = false; fileInput.disabled = false;
         roomInput.disabled = true; joinBtn.disabled = true;
 
-        // Kích hoạt lắng nghe trạng thái soạn tin nhắn của người khác khi vào phòng thành công
+        // Kích hoạt lắng nghe trạng thái soạn tin nhắn đồng bộ đa nền tảng
         listenTypingStatus(room);
     }
 
@@ -342,7 +330,7 @@
         roomRef.push({ sender: myId, text: msg, type: 'text', timestamp: Date.now() });
         msgInput.value = '';
 
-        // Xóa trạng thái đang soạn tin trên Firebase ngay khi nhấn gửi
+        // Tắt ngay lập tức chữ "Đang soạn tin..." sau khi bấm gửi
         clearTimeout(typingTimeout);
         if (currentRoom) {
             database.ref(`typing/${currentRoom}/${myId}`).set(false);
@@ -363,20 +351,18 @@
         }
     }
 
-    // ĐÃ NÂNG CẤP BẢN GOM THƯ MỤC THÔNG MINH
     function thựcThiGửiDrive(file) {
         uploadStatus.textContent = "Đang phân loại đưa vào thư mục phòng...";
         fileInput.disabled = true;
 
-        // Cấu hình metadata: Gắn thẻ chỉ định đưa file chạy vào thư mục riêng của phòng chat
         const metadata = { name: file.name, mimeType: file.type };
         if (folderIdForRoom) {
-            metadata.parents = [folderIdForRoom]; // Ép file chui vào đúng thư mục "Phòng XXXX"
+            metadata.parents = [folderIdForRoom];
         }
 
         const formData = new FormData();
         formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        formData.append('file', file);
+        formData.append('formData', file);
 
         fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
             method: 'POST',
@@ -435,51 +421,52 @@
         chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // ---- LOGIC XỬ LÝ TRẠNG THÁI ĐANG SOẠN TIN NHẮN (TYPING INDICATOR) ----
+    // ---- SỬA LỖI 2: TỐI ƯU LOGIC "ĐANG SOẠN TIN..." HOẠT ĐỘNG CHUẨN ĐA NỀN TẢNG (WEB & IPHONE) ----
     
-    // 1. Gửi trạng thái "Đang soạn tin..." lên Firebase khi gõ phím
-    msgInput.addEventListener('input', () => {
+    function updateTypingState() {
         if (!currentRoom || !roomRef) return;
-
-        // Nếu ô nhập liệu có chữ, gửi trạng thái true lên Firebase
+        
+        // Đo lường chuẩn độ dài ký tự thực tế (tương thích hoàn hảo Web lẫn Mobile Safari)
         if (msgInput.value.trim().length > 0) {
             database.ref(`typing/${currentRoom}/${myId}`).set(true);
             
-            // Xóa bộ đếm cũ đi để tính lại thời gian chờ mới
             clearTimeout(typingTimeout);
-
-            // Nếu người dùng dừng gõ quá 1.5 giây, tự chuyển về trạng thái false (ngừng soạn)
             typingTimeout = setTimeout(() => {
                 database.ref(`typing/${currentRoom}/${myId}`).set(false);
-            }, 1500);
+            }, 1800); // 1.8 giây không tương tác sẽ tự ẩn chữ
         } else {
-            // Nếu người dùng xóa hết chữ trong ô nhập, ẩn chữ ngay lập tức
             database.ref(`typing/${currentRoom}/${myId}`).set(false);
         }
-    });
+    }
 
-    // 2. Lắng nghe Firebase xem có ai khác trong phòng đang soạn tin hay không
+    // Lắng nghe cả 2 sự kiện để bọc lót cho toàn bộ các hệ điều hành đám mây/máy tính/điện thoại
+    msgInput.addEventListener('input', updateTypingState);
+    msgInput.addEventListener('keyup', updateTypingState);
+
     function listenTypingStatus(room) {
         const typingRef = database.ref(`typing/${room}`);
         
+        // Tự động xóa trạng thái gõ nếu người dùng tắt tab đột ngột
+        typingRef.child(myId).onDisconnect().set(false);
+
         typingRef.on('value', (snapshot) => {
             const typingUsers = snapshot.val();
             let isSomeoneTyping = false;
 
             if (typingUsers) {
-                // Kiểm tra xem có ID người dùng nào khác mình đang có trạng thái true không
                 Object.keys(typingUsers).forEach((userId) => {
+                    // Nếu có bất kì người nào khác mình đang bật trạng thái soạn tin
                     if (userId !== myId && typingUsers[userId] === true) {
                         isSomeoneTyping = true;
                     }
                 });
             }
 
-            // Cập nhật giao diện hiển thị text "Đang soạn tin..."
+            // Đồng bộ hiển thị chữ đúng yêu cầu của bạn
             if (isSomeoneTyping) {
                 typingIndicator.innerHTML = `<span>💬 Đang soạn tin...</span>`;
             } else {
-                typingIndicator.innerHTML = ""; // Ẩn đi khi không có ai gõ
+                typingIndicator.innerHTML = ""; 
             }
         });
     }
