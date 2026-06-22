@@ -44,6 +44,7 @@
 <body>
 
 <div class="container">
+    <!-- MÀN HÌNH KHÓA -->
     <div id="lock-screen">
         <div class="lock-title">🔒 Ứng dụng đang tạm khóa</div>
         <p style="font-size: 0.85em; color: #666; text-align: center; margin: 0 10px;">Bạn vừa rời vị trí hoặc ẩn tab. Nhập mã PIN để tiếp tục chat.</p>
@@ -71,6 +72,7 @@
 
     <div id="chat-box"></div>
     
+    <!-- KHU VỰC HIỂN THỊ ĐANG SOẠN TIN -->
     <div id="typing-indicator"></div>
 
     <div class="input-area">
@@ -88,7 +90,7 @@
 <audio id="notif-sound" src="https://assets.mixkit.co/active_storage/sfx/2357/2357-84.wav" preload="auto"></audio>
 
 <script>
-    // FIX TRIỆT ĐỂ: Khởi tạo định danh cố định ngay lập tức trước khi cấu hình Firebase chạy
+    // Khởi tạo định danh cố định ngay lập tức trong bộ nhớ trình duyệt[cite: 2]
     let myId = localStorage.getItem("chat_my_id");
     if (!myId) {
         myId = 'user_' + Math.floor(Math.random() * 100000);
@@ -111,7 +113,10 @@
     let isLocked = false;
     let isFirstLoad = true;
     let idleTimer;
+    
+    // Quản lý biến gõ chữ tối ưu
     let typingTimeout; 
+    let isTypingLocal = false; 
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -295,7 +300,6 @@
             const msgId = snapshot.key;
             if(!data || data.system) return;
             
-            // Ép so sánh chuẩn xác với mã Id lưu trong localStorage
             const currentUserId = localStorage.getItem("chat_my_id") || myId;
             createMessageElement(msgId, data, (data.sender === currentUserId));
 
@@ -333,6 +337,7 @@
         msgInput.value = '';
 
         clearTimeout(typingTimeout);
+        isTypingLocal = false;
         if (currentRoom) {
             database.ref(`typing/${currentRoom}/${currentUserId}`).set(false);
         }
@@ -423,25 +428,43 @@
         chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // ---- TRẠNG THÁI ĐANG SOẠN TIN NHẮN (TYPING INDICATOR) ----
-    function updateTypingState() {
+    // ---- ĐÃ TỐI ƯU TOÀN DIỆN CHO WINDOWS (UNIKEY/EVKEY) & MOBILE ----
+    function handleWindowsTyping(e) {
         if (!currentRoom || !roomRef) return;
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
-        
-        if (msgInput.value.trim().length > 0) {
+
+        // Bỏ qua các phím điều hướng hệ thống (Enter, Shift, Esc...) để tránh nhiễu dữ liệu
+        if (e.key === "Enter" || e.key === "Escape" || e.key === "Control" || e.key === "Alt") return;
+
+        // Nếu người dùng bắt đầu nhấn phím và cờ trạng thái tại máy chưa bật
+        if (!isTypingLocal) {
+            isTypingLocal = true;
             database.ref(`typing/${currentRoom}/${currentUserId}`).set(true);
-            
-            clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                database.ref(`typing/${currentRoom}/${currentUserId}`).set(false);
-            }, 1800); 
-        } else {
+        }
+
+        // Tạo độ trễ thông minh (Debounce) liên tục đẩy lùi thời gian tự tắt trạng thái
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            isTypingLocal = false;
             database.ref(`typing/${currentRoom}/${currentUserId}`).set(false);
+        }, 2000); // Giữ trạng thái soạn tin trong 2 giây ổn định
+    }
+
+    // Lắng nghe bổ sung sự kiện xóa hết chữ bằng chuột hoặc tổ hợp phím
+    function handleTextInput() {
+        const currentUserId = localStorage.getItem("chat_my_id") || myId;
+        if (msgInput.value.trim().length === 0) {
+            clearTimeout(typingTimeout);
+            isTypingLocal = false;
+            if (currentRoom) {
+                database.ref(`typing/${currentRoom}/${currentUserId}`).set(false);
+            }
         }
     }
 
-    msgInput.addEventListener('input', updateTypingState);
-    msgInput.addEventListener('keyup', updateTypingState);
+    // Áp dụng bộ lắng nghe đa tầng tương thích Unikey trên Windows
+    msgInput.addEventListener('keydown', handleWindowsTyping);
+    msgInput.addEventListener('input', handleTextInput);
 
     function listenTypingStatus(room) {
         const typingRef = database.ref(`typing/${room}`);
