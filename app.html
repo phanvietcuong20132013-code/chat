@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Chat Pro - Private</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <style>
@@ -44,7 +45,7 @@
         #typing-indicator { font-size: 0.85em; color: #65676b; font-style: italic; margin: 0 0 5px 5px; height: 18px; display: flex; align-items: center; gap: 4px; }
         
         .admin-panel { margin-top: 20px; padding: 10px; border: 1px dashed #ccc; border-radius: 4px; background: #fff; font-size: 0.85em; display: none;}
-        .mode-selector { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; font-weight: bold; color: #333; cursor: pointer; }
+        .mode-selector { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-weight: bold; color: #333; cursor: pointer; width: fit-content; }
         .no-trace-pass { -webkit-text-security: disc !important; text-security: disc !important; }
 
         /* --- UI STICKER & REACTION --- */
@@ -68,14 +69,14 @@
         .picker-emoji { cursor: pointer; font-size: 1.5em; transition: transform 0.2s; }
         .picker-emoji:hover { transform: scale(1.3); }
 
-        .sticker-msg { font-size: 4em !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
+        .sticker-msg { font-size: 4.5em !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
 
         #sticker-panel {
             display: none; position: absolute; bottom: 100%; right: 0; margin-bottom: 10px; background: white; 
-            border: 1px solid #ddd; border-radius: 8px; padding: 10px; width: 220px; height: 180px; overflow-y: auto; 
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 10; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center;
+            border: 1px solid #ddd; border-radius: 8px; padding: 10px; width: 260px; height: 200px; overflow-y: auto; 
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1); z-index: 10; grid-template-columns: repeat(5, 1fr); gap: 8px; text-align: center;
         }
-        .sticker-item { font-size: 2em; cursor: pointer; transition: transform 0.2s; user-select: none; }
+        .sticker-item { font-size: 2.2em; cursor: pointer; transition: transform 0.2s; user-select: none; }
         .sticker-item:hover { transform: scale(1.2); }
     </style>
 </head>
@@ -103,12 +104,12 @@
     <div class="status-box">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
             <strong>Thông tin Kết Nối:</strong>
-            <button id="set-pin-btn" onclick="setupPinCode()" style="background: #6c757d; font-size: 0.75em; padding: 4px 8px;">⚙️ Khóa màn hình (PIN)</button>
+            <button id="set-pin-btn" onclick="setupPinCode()" style="background: #6c757d; font-size: 0.75em; padding: 4px 8px;">⚙️ Khóa (PIN)</button>
         </div>
         
-        <label class="mode-selector">
+        <label class="mode-selector" title="Bật/Tắt chế độ bảo mật">
             <input type="checkbox" id="is-secure-mode" onchange="toggleModeChange()"> 
-            <span id="mode-text" style="color: #555;">🔓 Chế độ: Phòng CÔNG KHAI (Ai cũng tạo được)</span>
+            <span id="mode-text" style="color: #555; font-size: 1.3em;">🔓</span>
         </label>
 
         <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 5px;">
@@ -180,7 +181,7 @@
     let isFirstLoad = true;
     let idleTimer;
     let typingTimeout; 
-    let activeReactMsgId = null; // Biến lưu ID tin nhắn đang được chọn thả tim
+    let activeReactMsgId = null;
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -201,8 +202,15 @@
         Notification.requestPermission();
     }
 
-    /* --- CÀI ĐẶT STICKER --- */
-    const STICKER_LIST = ['😍', '😂', '😭', '😡', '👍', '🙏', '🎉', '💔', '💩', '👻', '🤡', '👽', '🤖', '🎃', '😈', '💃', '🍻', '🔥', '🌟', '💯', '🐶', '🐱', '🐷', '🐸'];
+    /* --- CÀI ĐẶT STICKER KHỔNG LỒ MỚI --- */
+    const STICKER_LIST = [
+        '😍', '😂', '😭', '😡', '👍', '🙏', '🎉', '💔', '💩', '👻', 
+        '🤡', '👽', '🤖', '🎃', '😈', '💃', '🍻', '🔥', '🌟', '💯', 
+        '🐶', '🐱', '🐷', '🐸', '😎', '🤯', '🥵', '🥶', '😷', '🤮', 
+        '🤧', '😇', '🥳', '🥺', '😤', '🤬', '🤫', '🥱', '🤪', '🤩',
+        '🙈', '🙉', '🙊', '🐒', '🦋', '🐢', '🦖', '🐙', '🦈', '🐅', 
+        '🦄', '🍎', '🍔', '🍟', '🍕', '🍺', '☕', '🚀', '🚁', '🎁'
+    ];
     
     function initStickers() {
         const panel = document.getElementById('sticker-panel');
@@ -218,7 +226,6 @@
     function sendSticker(stickerValue) {
         if (!roomRef) return;
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
-        // Loại tin nhắn mới: sticker
         roomRef.push({ sender: currentUserId, text: stickerValue, type: 'sticker', timestamp: Date.now() });
         toggleStickerPanel();
         
@@ -227,16 +234,17 @@
     }
     /* ----------------------- */
 
+    // Hàm cập nhật trạng thái UI hiển thị chỉ icon, không chữ
     function toggleModeChange() {
         isSecureMode = document.getElementById('is-secure-mode').checked;
         const modeText = document.getElementById('mode-text');
         if (isSecureMode) {
             passInput.style.display = "block";
-            modeText.innerHTML = "🔒 Chế độ: PHÒNG BÍ MẬT";
+            modeText.innerHTML = "🔒";
             modeText.style.color = "red";
         } else {
             passInput.style.display = "none";
-            modeText.innerHTML = "🔓 Chế độ: Phòng CÔNG KHAI";
+            modeText.innerHTML = "🔓";
             modeText.style.color = "#555";
         }
     }
@@ -488,12 +496,10 @@
         activeReactMsgId = msgId;
         const picker = document.getElementById('reaction-picker');
         picker.style.display = 'flex';
-        // Hiển thị khung thả tim ngay gần chuột
         picker.style.top = (e.pageY - 40) + 'px';
         picker.style.left = Math.max(10, e.pageX - 80) + 'px';
     }
 
-    // Ẩn bảng thả tim / sticker khi bấm ra ngoài
     document.addEventListener('click', (e) => {
         if(!e.target.closest('#reaction-picker') && !e.target.closest('.react-btn')) {
             document.getElementById('reaction-picker').style.display = 'none';
@@ -507,7 +513,6 @@
         if(!activeReactMsgId || !roomRef) return;
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
         const path = isSecureMode ? 'secure_rooms/' + currentSecureRoomPath : 'rooms/' + currentRoomDisplay;
-        // Đẩy thẳng vào nhánh con "reactions" của tin nhắn
         database.ref(path + '/' + activeReactMsgId + '/reactions/' + currentUserId).set(emoji);
         document.getElementById('reaction-picker').style.display = 'none';
     }
@@ -521,7 +526,6 @@
             return;
         }
         container.style.display = 'flex';
-        // Đếm số lượng từng loại reaction (Ví dụ: 2 haha, 1 tim)
         const counts = {};
         Object.values(reactions).forEach(e => counts[e] = (counts[e] || 0) + 1);
         
@@ -545,28 +549,25 @@
             divBox.innerHTML = `📁 File phòng:<br><a href="${data.fileUrl}" target="_blank" class="file-link" style="color:#ffea00;">👉 ${data.text}</a>`;
         } else if (data.type === 'sticker') {
             divBox.textContent = data.text;
-            divBox.className += ' sticker-msg'; // Class cho sticker khổng lồ
+            divBox.className += ' sticker-msg';
         } else { 
             divBox.textContent = data.text; 
         }
 
         wrapper.appendChild(divBox);
 
-        // --- Nút bật bảng thả tim (Chỉ hiện khi hover chuột) ---
         const reactBtn = document.createElement('button');
         reactBtn.className = 'react-btn';
         reactBtn.innerHTML = '☻';
         reactBtn.onclick = (e) => openReactionPicker(e, msgId);
         wrapper.appendChild(reactBtn);
 
-        // --- Khung hiển thị thả tim ở góc tin nhắn ---
         const reactDisplay = document.createElement('div');
         reactDisplay.id = 'reactions-' + msgId;
         reactDisplay.className = 'reactions-display';
         reactDisplay.style.display = 'none';
         wrapper.appendChild(reactDisplay);
         
-        // Gọi hàm update ngay nếu tin nhắn đã có người thả tim từ trước
         if(data.reactions) updateReactionsUI(msgId, data.reactions);
 
         if (data.timestamp) {
