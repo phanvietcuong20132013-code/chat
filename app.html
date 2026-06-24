@@ -3,19 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>App Chat Pro - Phân Loại Thư Mục Drive</title>
+    <title>App Chat Pro - Private Secure v2</title>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f0f2f5; position: relative; }
         .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); position: relative; }
-        #chat-box { border: 1px solid #ddd; height: 350px; overflow-y: auto; padding: 10px; margin: 15px 0; background: #fafafa; border-radius: 4px; display: flex; flex-direction: column; gap: 8px; }
+        #chat-box { border: 1px solid #ddd; height: 350px; overflow-y: auto; padding: 10px; margin: 15px 0; background: #fafafa; border-radius: 4px; display: flex; flex-direction: column; gap: 12px; }
         .msg-wrapper { display: flex; flex-direction: column; max-width: 75%; position: relative; }
         .my-wrapper { align-self: flex-end; align-items: flex-end; }
         .their-wrapper { align-self: flex-start; align-items: flex-start; }
         .msg { padding: 8px 12px; border-radius: 15px; word-wrap: break-word; font-weight: bold; font-size: 0.95em; width: fit-content; }
         .my-msg { background-color: #0084ff; color: white; border-bottom-right-radius: 2px; }
         .their-msg { background-color: #e4e6eb; color: #050505; border-bottom-left-radius: 2px; }
+        
+        .msg-time { font-size: 0.7em; color: #888; margin-top: 3px; font-weight: normal; }
+        .my-wrapper .msg-time { text-align: right; }
+        .their-wrapper .msg-time { text-align: left; }
+
         .revoke-btn { background: none; border: none; color: #ff3b30; font-size: 0.75em; cursor: pointer; padding: 2px 5px; margin-top: 2px; display: none; }
         .my-wrapper:hover .revoke-btn { display: block; }
         .sys-msg { text-align: center; color: #888; font-style: italic; margin: 5px 0; font-size: 0.9em; align-self: center; width: 100%; }
@@ -37,14 +42,15 @@
         .lock-title { font-size: 1.2rem; font-weight: bold; color: #333; }
         .security-area { display: flex; justify-content: space-between; align-items: center; background: #fff3cd; border: 1px solid #ffeeba; padding: 8px; border-radius: 4px; margin-top: 5px; font-size: 0.85em; color: #856404;}
         
-        /* CSS cho dòng thông báo đang soạn tin nhắn */
         #typing-indicator { font-size: 0.85em; color: #65676b; font-style: italic; margin: 0 0 5px 5px; height: 18px; display: flex; align-items: center; gap: 4px; }
+        
+        /* Khu vực Admin Tool */
+        .admin-panel { margin-top: 20px; padding: 10px; border: 1px dashed #ccc; border-radius: 4px; background: #fff; font-size: 0.85em; display: none;}
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- MÀN HÌNH KHÓA -->
     <div id="lock-screen">
         <div class="lock-title">🔒 Ứng dụng đang tạm khóa</div>
         <p style="font-size: 0.85em; color: #666; text-align: center; margin: 0 10px;">Bạn vừa rời vị trí hoặc ẩn tab. Nhập mã PIN để tiếp tục chat.</p>
@@ -54,16 +60,20 @@
         </div>
     </div>
 
-    <h2>App Chat Pro - Smart Folders Drive</h2>
+    <h2>App Chat Pro - Private 1:1 Only</h2>
 
     <div class="status-box">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong>Mã Phòng Chat:</strong>
-            <button id="set-pin-btn" onclick="setupPinCode()" style="background: #6c757d; font-size: 0.75em; padding: 4px 8px;">⚙️ Cài mã khóa PIN</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+            <strong>Thông tin Phòng Chat:</strong>
+            <button id="set-pin-btn" onclick="setupPinCode()" style="background: #6c757d; font-size: 0.75em; padding: 4px 8px;">⚙️ Khóa màn hình (PIN)</button>
         </div>
-        <div style="display: flex; gap: 5px; margin-top: 5px;">
-            <input type="text" id="room-id" placeholder="Ví dụ: 9090">
-            <button id="join-btn" onclick="joinRoom()">Vào Phòng</button>
+        
+        <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 5px;">
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="room-id" placeholder="Tên phòng chat..." autocomplete="new-password">
+                <input type="password" id="room-pass" placeholder="Mật khẩu phòng..." autocomplete="new-password">
+            </div>
+            <button id="join-btn" onclick="joinRoom()" style="width: 100%;">Mở Kết Nối Mã Hóa</button>
         </div>
         <div class="security-area">
             <span id="drive-status-text">⚡ Hệ thống đang kết nối luồng Drive tự động...</span>
@@ -72,7 +82,6 @@
 
     <div id="chat-box"></div>
     
-    <!-- KHU VỰC HIỂN THỊ ĐANG SOẠN TIN -->
     <div id="typing-indicator"></div>
 
     <div class="input-area">
@@ -85,19 +94,28 @@
             <span id="upload-status" style="color: #34a853; font-weight: bold;"></span>
         </div>
     </div>
+
+    <center style="margin-top: 15px;">
+        <span onclick="toggleAdminPanel()" style="font-size: 11px; color: #aaa; cursor: pointer; text-decoration: underline;">🛠️ Công cụ kích hoạt phòng (Chỉ dành cho Admin)</span>
+    </center>
+    <div id="admin-panel" class="admin-panel">
+        <strong>Tạo mã kích hoạt phòng mới:</strong><br>
+        <input type="text" id="adm-room" placeholder="Nhập tên phòng dự định..." style="width:90%; margin-top:5px;"><br>
+        <input type="text" id="adm-pass" placeholder="Nhập mật khẩu dự định..." style="width:90%; margin-top:5px;"><br>
+        <button onclick="generateActivationKey()" style="margin-top:5px; background:#28a745; padding:5px 10px; font-size:12px;">Lấy mã kích hoạt</button>
+        <div id="admin-result" style="margin-top:8px; word-break: break-all; color: blue; font-weight: bold;"></div>
+    </div>
 </div>
 
 <audio id="notif-sound" src="https://assets.mixkit.co/active_storage/sfx/2357/2357-84.wav" preload="auto"></audio>
 
 <script>
-    // Khởi tạo định danh cố định ngay lập tức trong bộ nhớ trình duyệt[cite: 2]
     let myId = localStorage.getItem("chat_my_id");
     if (!myId) {
         myId = 'user_' + Math.floor(Math.random() * 100000);
         localStorage.setItem("chat_my_id", myId);
     }
 
-    // ---- CẤU HÌNH THÔNG TIN CỦA CƯỜNG ----
     const firebaseConfig = { databaseURL: "https://web-chat-cua-toi-default-rtdb.asia-southeast1.firebasedatabase.app" };
     const DRIVE_CLIENT_ID = "729849119569-jgt238a7tackv3n0ssc3rqbo4nmq6it0.apps.googleusercontent.com";
     const DRIVE_CLIENT_SECRET = "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"; 
@@ -105,7 +123,8 @@
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
 
-    let currentRoom = "";
+    let currentRoomDisplay = ""; 
+    let currentSecureRoomPath = ""; 
     let roomRef = null;
     let accessToken = null;
     let folderIdForRoom = null; 
@@ -113,15 +132,13 @@
     let isLocked = false;
     let isFirstLoad = true;
     let idleTimer;
-    
-    // Quản lý biến gõ chữ tối ưu
     let typingTimeout; 
-    let isTypingLocal = false; 
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
     const sendBtn = document.getElementById('send-btn');
     const roomInput = document.getElementById('room-id');
+    const passInput = document.getElementById('room-pass');
     const joinBtn = document.getElementById('join-btn');
     const fileInput = document.getElementById('file-input');
     const uploadStatus = document.getElementById('upload-status');
@@ -135,14 +152,29 @@
         Notification.requestPermission();
     }
 
+    async function generateSecureRoomHash(roomId, password) {
+        const text = roomId.trim() + "_SECURE_" + password.trim();
+        const encoder = new TextEncoder();
+        const data = encoder.encode(text);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function formatTime(timestamp) {
+        if (!timestamp) return "";
+        const date = new Date(timestamp);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        return `${hours}:${minutes} - ${day}/${month}`;
+    }
+
     function refreshGoogleToken() {
         return database.ref('system/google_refresh_token').once('value').then((snapshot) => {
             let savedRefreshToken = snapshot.val();
-            
-            if (!savedRefreshToken) {
-                driveStatusText.innerHTML = "⚠️ Chưa cấu hình Token gốc! <button onclick='setupMasterToken()' style='padding:2px 5px;font-size:11px;background:#ffc107;color:#000;border:none;cursor:pointer;'>Kích hoạt lần đầu</button>";
-                return null;
-            }
+            if (!savedRefreshToken) return null;
 
             return fetch('https://oauth2.googleapis.com/token', {
                 method: 'POST',
@@ -158,20 +190,18 @@
             .then(data => {
                 if (data.access_token) {
                     accessToken = data.access_token;
-                    driveStatusText.textContent = `🟢 Đã kết nối Drive vĩnh viễn (Phòng ${currentRoom})`;
+                    driveStatusText.textContent = `🟢 Đã kết nối Drive vĩnh viễn (Phòng ${currentRoomDisplay})`;
                     kiemTraHoacTaoThuMucPhong();
                     return accessToken;
-                } else {
-                    driveStatusText.textContent = "❌ Lỗi làm mới cổng Drive!";
-                    return null;
                 }
+                return null;
             });
         });
     }
 
     function kiemTraHoacTaoThuMucPhong() {
-        if (!accessToken || !currentRoom) return;
-        let folderName = `Phòng ${currentRoom}`;
+        if (!accessToken || !currentRoomDisplay) return;
+        let folderName = `Phòng ${currentRoomDisplay}`;
         let query = encodeURIComponent(`name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`);
         fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`, {
             method: 'GET',
@@ -191,39 +221,6 @@
                 .then(newFolder => {
                     if (newFolder.id) folderIdForRoom = newFolder.id;
                 });
-            }
-        });
-    }
-
-    function setupMasterToken() {
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${DRIVE_CLIENT_ID}&redirect_uri=https://phanvietcuong20132013-code.github.io/chat/app.html&response_type=code&scope=https://www.googleapis.com/auth/drive.file&access_type=offline&prompt=consent`;
-        window.location.href = authUrl;
-    }
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const authCode = urlParams.get('code');
-    if (authCode) {
-        driveStatusText.textContent = "⚙️ Đang tạo cổng kết nối vĩnh viễn...";
-        fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                code: authCode,
-                client_id: DRIVE_CLIENT_ID,
-                client_secret: DRIVE_CLIENT_SECRET,
-                redirect_uri: 'https://phanvietcuong20132013-code.github.io/chat/app.html',
-                grant_type: 'authorization_code'
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.refresh_token) {
-                database.ref('system/google_refresh_token').set(data.refresh_token).then(() => {
-                    alert("🎉 Tuyệt vời! Đã kích hoạt cổng kết nối Drive vĩnh viễn thành công!");
-                    window.location.href = 'https://phanvietcuong20132013-code.github.io/chat/app.html';
-                });
-            } else {
-                alert("Lỗi cấu hình! Hãy thử bấm lại nút.");
             }
         });
     }
@@ -282,19 +279,31 @@
         }
     });
 
-    function joinRoom() {
+    async function joinRoom() {
         const room = roomInput.value.trim();
-        if (!room) return alert("Vui lòng nhập mã phòng!");
-        currentRoom = room;
-        chatBox.innerHTML = '';
-        appendLog(`Hệ thống: Đang kết nối vào phòng [${room}]...`);
+        const pass = passInput.value.trim();
 
-        roomRef = database.ref('rooms/' + room);
+        if (!room || !pass) return alert("Vui lòng nhập đầy đủ tên phòng và mật khẩu!");
+
+        currentRoomDisplay = room;
+        chatBox.innerHTML = '';
+        appendLog(`Hệ thống: Đang kiểm tra bảo mật phòng...`);
+
+        currentSecureRoomPath = await generateSecureRoomHash(room, pass);
+
+        // TRIỆT TIÊU MẬT KHẨU: Xóa sạch dữ liệu ngay lập tức khỏi ô nhập và DOM để máy không thể lưu
+        roomInput.value = "";
+        passInput.value = "";
+        roomInput.setAttribute("value", "");
+        passInput.setAttribute("value", "");
+
+        roomRef = database.ref('secure_rooms/' + currentSecureRoomPath);
         roomRef.off();
 
         isFirstLoad = true;
         refreshGoogleToken();
 
+        // LẮNG NGHE VÀ BẮT LỖI BẢO MẬT (Nếu phòng không tồn tại -> Firebase chặn -> Nhẩy vào nhánh error)
         roomRef.limitToLast(50).on('child_added', (snapshot) => {
             const data = snapshot.val();
             const msgId = snapshot.key;
@@ -305,29 +314,40 @@
 
             if (!isFirstLoad && data.sender !== currentUserId) {
                 notifSound.play().catch(e => console.log("Chặn âm thanh ngầm"));
-                
                 if (document.hidden || isLocked) {
                     let notifText = data.type === 'file' ? `📁 Đã gửi một file: ${data.text}` : data.text;
-                    new Notification(`💬 Phòng [${currentRoom}] có tin nhắn mới`, {
-                        body: notifText,
-                        icon: "https://cdn-icons-png.flaticon.com/512/5968/5968779.png"
-                    });
+                    new Notification(`💬 Phòng mới`, { body: notifText });
                 }
+            }
+        }, (error) => {
+            // Trường hợp người lạ tự ý dò hoặc lập phòng bừa bãi sẽ bị chặn tại đây
+            if (error.code === "PERMISSION_DENIED") {
+                chatBox.innerHTML = "";
+                appendLog(`❌ BẢO MẬT: Phòng không tồn tại hoặc bạn nhập sai mật khẩu! Bạn không có quyền tự tạo phòng mới.`);
+                msgInput.disabled = true; sendBtn.disabled = true; fileInput.disabled = true;
+                roomInput.disabled = false; passInput.disabled = false; joinBtn.disabled = false;
+                joinBtn.textContent = "Mở Kết Nối Mã Hóa";
+                joinBtn.style.backgroundColor = "#0084ff";
             }
         });
 
-        setTimeout(() => { isFirstLoad = false; }, 2000);
+        // Nếu qua cửa kiểm tra của Firebase thành công
+        setTimeout(() => { 
+            if(roomRef) {
+                isFirstLoad = false; 
+                appendLog(`Hệ thống: Đã kết nối an toàn vào phòng [${currentRoomDisplay}]!`);
+                msgInput.disabled = false; sendBtn.disabled = false; fileInput.disabled = false;
+                roomInput.disabled = true; passInput.disabled = true; joinBtn.disabled = true;
+                joinBtn.textContent = "Đã Kết Nối An Toàn";
+                joinBtn.style.backgroundColor = "#28a745";
+                listenTypingStatus();
+            }
+        }, 1500);
 
         roomRef.on('child_removed', (snapshot) => {
             const elementToRemove = document.getElementById('wrapper-' + snapshot.key);
             if (elementToRemove) elementToRemove.innerHTML = `<div class="sys-msg" style="font-size:0.8em;">Tin nhắn đã được thu hồi</div>`;
         });
-
-        appendLog(`Hệ thống: Đã vào phòng [${room}] thành công!`);
-        msgInput.disabled = false; sendBtn.disabled = false; fileInput.disabled = false;
-        roomInput.disabled = true; joinBtn.disabled = true;
-
-        listenTypingStatus(room);
     }
 
     function sendMessage() {
@@ -337,34 +357,27 @@
         msgInput.value = '';
 
         clearTimeout(typingTimeout);
-        isTypingLocal = false;
-        if (currentRoom) {
-            database.ref(`typing/${currentRoom}/${currentUserId}`).set(false);
+        if (currentSecureRoomPath) {
+            database.ref(`secure_typing/${currentSecureRoomPath}/${currentUserId}`).set(false);
         }
     }
 
     function uploadToGoogleDrive(input) {
         const file = input.files[0];
         if (!file || !roomRef) return;
-        
         if (!accessToken) {
             refreshGoogleToken().then((newToken) => {
                 if (newToken) thựcThiGửiDrive(file);
-                else alert("Lỗi hệ thống kết nối tự động!");
+                else alert("Lỗi kết nối Drive!");
             });
-        } else {
-            thựcThiGửiDrive(file);
-        }
+        } else { thựcThiGửiDrive(file); }
     }
 
     function thựcThiGửiDrive(file) {
-        uploadStatus.textContent = "Đang phân loại đưa vào thư mục phòng...";
+        uploadStatus.textContent = "Đang đưa vào Drive...";
         fileInput.disabled = true;
-
         const metadata = { name: file.name, mimeType: file.type };
-        if (folderIdForRoom) {
-            metadata.parents = [folderIdForRoom];
-        }
+        if (folderIdForRoom) metadata.parents = [folderIdForRoom];
 
         const formData = new FormData();
         formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -383,41 +396,43 @@
                     headers: new Headers({ 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' }),
                     body: JSON.stringify({ role: 'reader', type: 'anyone' })
                 }).then(() => {
-                    let finalUrl = driveFile.webViewLink;
                     const currentUserId = localStorage.getItem("chat_my_id") || myId;
                     roomRef.push({
                         sender: currentUserId, text: file.name, type: 'file',
-                        fileUrl: finalUrl, timestamp: Date.now()
+                        fileUrl: driveFile.webViewLink, timestamp: Date.now()
                     });
                     uploadStatus.textContent = "Thành công!";
                 });
-            } else {
-                uploadStatus.textContent = "Lỗi up Drive!";
-                accessToken = null;
-            }
+            } else { uploadStatus.textContent = "Lỗi Drive!"; }
             fileInput.disabled = false; fileInput.value = "";
             setTimeout(() => { uploadStatus.textContent = ""; }, 2000);
-        })
-        .catch(err => {
-            console.error(err); uploadStatus.textContent = "Lỗi đường truyền!"; fileInput.disabled = false;
-        });
+        }).catch(err => { fileInput.disabled = false; });
     }
 
     function createMessageElement(msgId, data, isMe) {
         const wrapper = document.createElement('div');
         wrapper.id = 'wrapper-' + msgId;
         wrapper.className = isMe ? 'msg-wrapper my-wrapper' : 'msg-wrapper their-wrapper';
+        
         const divBox = document.createElement('div');
         divBox.className = isMe ? 'msg my-msg' : 'msg their-msg';
 
         if (data.type === 'file') {
-            divBox.innerHTML = `🤖 File phân loại từ thư mục Phòng:<br><a href="${data.fileUrl}" target="_blank" class="file-link" style="color:#ffea00; text-decoration: underline;">👉 ${data.text} (Bấm để xem/tải)</a>`;
+            divBox.innerHTML = `🤖 File phòng:<br><a href="${data.fileUrl}" target="_blank" class="file-link" style="color:#ffea00;">👉 ${data.text} (Xem/Tải)</a>`;
         } else { divBox.textContent = data.text; }
 
         wrapper.appendChild(divBox);
+
+        if (data.timestamp) {
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'msg-time';
+            timeDiv.textContent = formatTime(data.timestamp);
+            wrapper.appendChild(timeDiv);
+        }
+
         if (isMe) {
             const revokeBtn = document.createElement('button'); revokeBtn.className = 'revoke-btn'; revokeBtn.textContent = '[ Thu hồi ]';
-            revokeBtn.onclick = () => { if (confirm("Thu hồi tin nhắn này?")) database.ref('rooms/' + currentRoom + '/' + msgId).remove(); };
+            revokeBtn.onclick = () => { if (confirm("Thu hồi tin nhắn này?")) database.ref('secure_rooms/' + currentSecureRoomPath + '/' + msgId).remove(); };
             wrapper.appendChild(revokeBtn);
         }
         chatBox.appendChild(wrapper); chatBox.scrollTop = chatBox.scrollHeight;
@@ -428,72 +443,52 @@
         chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // ---- ĐÃ TỐI ƯU TOÀN DIỆN CHO WINDOWS (UNIKEY/EVKEY) & MOBILE ----
-    function handleWindowsTyping(e) {
-        if (!currentRoom || !roomRef) return;
+    function updateTypingState() {
+        if (!currentSecureRoomPath || !roomRef) return;
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
-
-        // Bỏ qua các phím điều hướng hệ thống (Enter, Shift, Esc...) để tránh nhiễu dữ liệu
-        if (e.key === "Enter" || e.key === "Escape" || e.key === "Control" || e.key === "Alt") return;
-
-        // Nếu người dùng bắt đầu nhấn phím và cờ trạng thái tại máy chưa bật
-        if (!isTypingLocal) {
-            isTypingLocal = true;
-            database.ref(`typing/${currentRoom}/${currentUserId}`).set(true);
-        }
-
-        // Tạo độ trễ thông minh (Debounce) liên tục đẩy lùi thời gian tự tắt trạng thái
-        clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-            isTypingLocal = false;
-            database.ref(`typing/${currentRoom}/${currentUserId}`).set(false);
-        }, 2000); // Giữ trạng thái soạn tin trong 2 giây ổn định
-    }
-
-    // Lắng nghe bổ sung sự kiện xóa hết chữ bằng chuột hoặc tổ hợp phím
-    function handleTextInput() {
-        const currentUserId = localStorage.getItem("chat_my_id") || myId;
-        if (msgInput.value.trim().length === 0) {
+        if (msgInput.value.trim().length > 0) {
+            database.ref(`secure_typing/${currentSecureRoomPath}/${currentUserId}`).set(true);
             clearTimeout(typingTimeout);
-            isTypingLocal = false;
-            if (currentRoom) {
-                database.ref(`typing/${currentRoom}/${currentUserId}`).set(false);
-            }
-        }
+            typingTimeout = setTimeout(() => { database.ref(`secure_typing/${currentSecureRoomPath}/${currentUserId}`).set(false); }, 1800); 
+        } else { database.ref(`secure_typing/${currentSecureRoomPath}/${currentUserId}`).set(false); }
     }
 
-    // Áp dụng bộ lắng nghe đa tầng tương thích Unikey trên Windows
-    msgInput.addEventListener('keydown', handleWindowsTyping);
-    msgInput.addEventListener('input', handleTextInput);
+    msgInput.addEventListener('input', updateTypingState);
+    msgInput.addEventListener('keyup', updateTypingState);
 
-    function listenTypingStatus(room) {
-        const typingRef = database.ref(`typing/${room}`);
+    function listenTypingStatus() {
+        const typingRef = database.ref(`secure_typing/${currentSecureRoomPath}`);
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
-        
         typingRef.child(currentUserId).onDisconnect().set(false);
-
         typingRef.on('value', (snapshot) => {
             const typingUsers = snapshot.val();
             let isSomeoneTyping = false;
-
             if (typingUsers) {
                 Object.keys(typingUsers).forEach((userId) => {
-                    if (userId !== currentUserId && typingUsers[userId] === true) {
-                        isSomeoneTyping = true;
-                    }
+                    if (userId !== currentUserId && typingUsers[userId] === true) isSomeoneTyping = true;
                 });
             }
-
-            if (isSomeoneTyping) {
-                typingIndicator.innerHTML = `<span>💬 Đang soạn tin...</span>`;
-            } else {
-                typingIndicator.innerHTML = ""; 
-            }
+            typingIndicator.innerHTML = isSomeoneTyping ? `<span>💬 Đối tác đang soạn tin...</span>` : "";
         });
+    }
+
+    // --- HÀM DÀNH RIÊNG CHO ADMIN ---
+    function toggleAdminPanel() {
+        const panel = document.getElementById('admin-panel');
+        panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+    }
+
+    async function generateActivationKey() {
+        const r = document.getElementById('adm-room').value.trim();
+        const p = document.getElementById('adm-pass').value.trim();
+        if(!r || !p) return alert("Hãy điền đủ tên phòng + pass để test!");
+        const hash = await generateSecureRoomHash(r, p);
+        document.getElementById('admin-result').innerHTML = `Mã Kích Hoạt Của Bạn:<br><span style="color:red; font-size:12px; user-select:all;">${hash}</span><br><br><small style="color:#666; font-weight:normal;">Hãy copy mã đỏ này rồi lên Firebase Console tạo 1 node tên như vậy, bên trong đặt giá trị "activated: true" là xong.</small>`;
     }
 
     msgInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
     pinInput.addEventListener("keypress", (e) => { if (e.key === "Enter") unlockApp(); });
+    passInput.addEventListener("keypress", (e) => { if (e.key === "Enter") joinRoom(); });
 </script>
 </body>
 </html>
