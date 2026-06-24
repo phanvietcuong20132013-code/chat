@@ -17,12 +17,12 @@
         .my-msg { background-color: #0084ff; color: white; border-bottom-right-radius: 2px; }
         .their-msg { background-color: #e4e6eb; color: #050505; border-bottom-left-radius: 2px; }
         
-        .msg-time { font-size: 0.7em; color: #888; margin-top: 3px; font-weight: normal; }
+        /* Hiệu ứng: Thời gian bị ẩn đi, chỉ bung ra mượt mà khi hover chuột */
+        .msg-time { font-size: 0px; opacity: 0; color: #888; margin-top: 0; font-weight: normal; transition: all 0.2s ease-in-out; }
         .my-wrapper .msg-time { text-align: right; }
         .their-wrapper .msg-time { text-align: left; }
+        .msg-wrapper:hover .msg-time { font-size: 0.7em; opacity: 1; margin-top: 3px; }
 
-        .revoke-btn { background: none; border: none; color: #ff3b30; font-size: 0.75em; cursor: pointer; padding: 2px 5px; margin-top: 2px; display: none; }
-        .my-wrapper:hover .revoke-btn { display: block; }
         .sys-msg { text-align: center; color: #888; font-style: italic; margin: 5px 0; font-size: 0.9em; align-self: center; width: 100%; }
         .file-link { color: inherit; text-decoration: underline; display: block; margin-top: 3px; word-break: break-all; }
         input, button { padding: 10px; border-radius: 4px; border: 1px solid #ddd; }
@@ -48,13 +48,32 @@
         .mode-selector { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-weight: bold; color: #333; cursor: pointer; width: fit-content; }
         .no-trace-pass { -webkit-text-security: disc !important; text-security: disc !important; }
 
-        /* --- UI STICKER & REACTION --- */
-        .react-btn {
-            position: absolute; bottom: 0; right: -25px; background: none; border: none; font-size: 1.1em; 
-            cursor: pointer; opacity: 0; transition: opacity 0.2s; padding: 0 5px; color: #888;
+        /* --- UI QUOTE (TRÍCH DẪN) --- */
+        .quoted-msg {
+            font-size: 0.85em; background: rgba(0, 0, 0, 0.05); border-left: 3px solid rgba(0, 0, 0, 0.2);
+            padding: 4px 8px; border-radius: 4px; margin-bottom: 5px; opacity: 0.9; display: -webkit-box;
+            -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; font-weight: normal;
         }
-        .my-wrapper .react-btn { right: auto; left: -25px; }
-        .msg-wrapper:hover .react-btn { opacity: 1; }
+        .my-msg .quoted-msg { background: rgba(255, 255, 255, 0.15); border-left: 3px solid rgba(255, 255, 255, 0.6); }
+
+        #reply-preview {
+            display: none; background: #e7f3ff; border-left: 3px solid #0084ff; padding: 6px 30px 6px 10px; 
+            font-size: 0.85em; border-radius: 4px; position: relative; color: #333; margin-bottom: 2px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic;
+        }
+        #reply-preview button {
+            position: absolute; right: 2px; top: 50%; transform: translateY(-50%); background: none; border: none; 
+            font-size: 1.1em; color: #888; cursor: pointer; padding: 0 5px;
+        }
+
+        /* --- UI MENU NÚT NỔI (REPLY, REACT, THU HỒI) --- */
+        .msg-actions {
+            position: absolute; bottom: 0; right: -70px; display: flex; gap: 2px; opacity: 0; transition: opacity 0.2s;
+        }
+        .my-wrapper .msg-actions { right: auto; left: -70px; flex-direction: row-reverse; }
+        .msg-wrapper:hover .msg-actions { opacity: 1; }
+        .action-btn { background: none; border: none; font-size: 1.1em; cursor: pointer; padding: 0 3px; color: #888; }
+        .action-btn:hover { transform: scale(1.2); }
         
         .reactions-display {
             position: absolute; bottom: -12px; right: 10px; background: white; border-radius: 12px; 
@@ -68,7 +87,6 @@
         }
         .picker-emoji { cursor: pointer; font-size: 1.5em; transition: transform 0.2s; }
         .picker-emoji:hover { transform: scale(1.3); }
-
         .sticker-msg { font-size: 4.5em !important; background: transparent !important; box-shadow: none !important; padding: 0 !important; }
 
         #sticker-panel {
@@ -131,6 +149,11 @@
     <div class="input-area">
         <div id="sticker-panel"></div>
 
+        <div id="reply-preview">
+            <span id="reply-preview-text"></span>
+            <button onclick="cancelReply()">✖</button>
+        </div>
+
         <div style="display: flex; gap: 5px;">
             <input type="text" id="message-text" placeholder="Nhập tin nhắn..." autocomplete="off" disabled>
             <button id="btn-sticker" onclick="toggleStickerPanel()" disabled style="background:#f0f2f5; color:#000; border:1px solid #ddd; padding: 0 10px; font-size: 1.2em;">😊</button>
@@ -182,6 +205,7 @@
     let idleTimer;
     let typingTimeout; 
     let activeReactMsgId = null;
+    let replyingToData = null; // Biến lưu dữ liệu đang được Reply
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -226,15 +250,35 @@
     function sendSticker(stickerValue) {
         if (!roomRef) return;
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
-        roomRef.push({ sender: currentUserId, text: stickerValue, type: 'sticker', timestamp: Date.now() });
+        const payload = { sender: currentUserId, text: stickerValue, type: 'sticker', timestamp: Date.now() };
+        // Nếu có trích dẫn tin nhắn cũ
+        if (replyingToData) { payload.replyTo = replyingToData; }
+        
+        roomRef.push(payload);
         toggleStickerPanel();
+        cancelReply();
         
         const path = isSecureMode ? `secure_typing/${currentSecureRoomPath}/${currentUserId}` : `typing/${currentRoomDisplay}/${currentUserId}`;
         database.ref(path).set(false);
     }
     /* ----------------------- */
 
-    // Hàm cập nhật trạng thái UI hiển thị chỉ icon, không chữ
+    /* --- TÍNH NĂNG REPLY --- */
+    function openReply(text, type) {
+        replyingToData = { text: text, type: type };
+        document.getElementById('reply-preview').style.display = 'block';
+        let previewText = type === 'sticker' ? '[Sticker]' : (type === 'file' ? '[Tệp]' : text);
+        document.getElementById('reply-preview-text').textContent = "Đang trả lời: " + previewText;
+        msgInput.focus();
+    }
+
+    function cancelReply() {
+        replyingToData = null;
+        document.getElementById('reply-preview').style.display = 'none';
+        document.getElementById('reply-preview-text').textContent = "";
+    }
+    /* ----------------------- */
+
     function toggleModeChange() {
         isSecureMode = document.getElementById('is-secure-mode').checked;
         const modeText = document.getElementById('mode-text');
@@ -404,7 +448,6 @@
             }
         });
 
-        // Bắt sự kiện có thay đổi (Dùng để update Realtime Reaction)
         roomRef.limitToLast(50).on('child_changed', (snapshot) => {
             const data = snapshot.val();
             const msgId = snapshot.key;
@@ -445,9 +488,15 @@
     function sendMessage() {
         const msg = msgInput.value.trim(); if (!msg || !roomRef) return;
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
-        roomRef.push({ sender: currentUserId, text: msg, type: 'text', timestamp: Date.now() });
+        const payload = { sender: currentUserId, text: msg, type: 'text', timestamp: Date.now() };
+        
+        if (replyingToData) { payload.replyTo = replyingToData; }
+        roomRef.push(payload);
+        
         msgInput.value = '';
         document.getElementById('sticker-panel').style.display = 'none';
+        cancelReply();
+
         clearTimeout(typingTimeout);
         if (isSecureMode && currentSecureRoomPath) {
             database.ref(`secure_typing/${currentSecureRoomPath}/${currentUserId}`).set(false);
@@ -465,6 +514,11 @@
 
     function thựcThiGửiDrive(file) {
         uploadStatus.textContent = "Đang tải file..."; fileInput.disabled = true;
+        
+        // Lưu tạm giá trị reply trước khi fetch bất đồng bộ
+        let currentReply = replyingToData;
+        cancelReply(); 
+
         const metadata = { name: file.name, mimeType: file.type };
         if (folderIdForRoom) metadata.parents = [folderIdForRoom];
         const formData = new FormData();
@@ -481,7 +535,9 @@
                     body: JSON.stringify({ role: 'reader', type: 'anyone' })
                 }).then(() => {
                     const currentUserId = localStorage.getItem("chat_my_id") || myId;
-                    roomRef.push({ sender: currentUserId, text: file.name, type: 'file', fileUrl: driveFile.webViewLink, timestamp: Date.now() });
+                    const payload = { sender: currentUserId, text: file.name, type: 'file', fileUrl: driveFile.webViewLink, timestamp: Date.now() };
+                    if (currentReply) payload.replyTo = currentReply;
+                    roomRef.push(payload);
                     uploadStatus.textContent = "Thành công!";
                 });
             }
@@ -501,7 +557,7 @@
     }
 
     document.addEventListener('click', (e) => {
-        if(!e.target.closest('#reaction-picker') && !e.target.closest('.react-btn')) {
+        if(!e.target.closest('#reaction-picker') && !e.target.closest('.action-btn')) {
             document.getElementById('reaction-picker').style.display = 'none';
         }
         if(!e.target.closest('#sticker-panel') && !e.target.closest('#btn-sticker')) {
@@ -545,22 +601,69 @@
         const divBox = document.createElement('div');
         divBox.className = isMe ? 'msg my-msg' : 'msg their-msg';
 
+        // Xử lý Render Khung Trích dẫn (Quote)
+        if (data.replyTo) {
+            const quoteDiv = document.createElement('div');
+            quoteDiv.className = 'quoted-msg';
+            quoteDiv.textContent = data.replyTo.type === 'sticker' ? `[Sticker] ${data.replyTo.text}` : (data.replyTo.type === 'file' ? `[Tệp] ${data.replyTo.text}` : data.replyTo.text);
+            divBox.appendChild(quoteDiv);
+        }
+
         if (data.type === 'file') {
-            divBox.innerHTML = `📁 File phòng:<br><a href="${data.fileUrl}" target="_blank" class="file-link" style="color:#ffea00;">👉 ${data.text}</a>`;
+            const fileSpan = document.createElement('span');
+            fileSpan.innerHTML = `📁 File phòng:<br><a href="${data.fileUrl}" target="_blank" class="file-link" style="color:#ffea00;">👉 ${data.text}</a>`;
+            divBox.appendChild(fileSpan);
         } else if (data.type === 'sticker') {
-            divBox.textContent = data.text;
-            divBox.className += ' sticker-msg';
+            const stickerSpan = document.createElement('span');
+            stickerSpan.className = 'sticker-msg';
+            stickerSpan.textContent = data.text;
+            divBox.appendChild(stickerSpan);
         } else { 
-            divBox.textContent = data.text; 
+            const textSpan = document.createElement('span');
+            textSpan.textContent = data.text;
+            divBox.appendChild(textSpan);
         }
 
         wrapper.appendChild(divBox);
 
+        // --- BỘ NÚT HÀNH ĐỘNG ẨN MỚI NÂNG CẤP ---
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'msg-actions';
+
+        // Nút Trả Lời (Reply)
+        const replyBtn = document.createElement('button');
+        replyBtn.className = 'action-btn';
+        replyBtn.title = 'Trả lời';
+        replyBtn.innerHTML = '↩️';
+        replyBtn.onclick = () => openReply(data.text, data.type);
+
+        // Nút Biểu Cảm (Reaction)
         const reactBtn = document.createElement('button');
-        reactBtn.className = 'react-btn';
+        reactBtn.className = 'action-btn';
+        reactBtn.title = 'Biểu cảm';
         reactBtn.innerHTML = '☻';
         reactBtn.onclick = (e) => openReactionPicker(e, msgId);
-        wrapper.appendChild(reactBtn);
+
+        // Nếu là tin nhắn của mình thì có thêm nút Thu hồi (Thùng rác)
+        if (isMe) {
+            const revokeBtn = document.createElement('button');
+            revokeBtn.className = 'action-btn';
+            revokeBtn.title = 'Thu hồi';
+            revokeBtn.innerHTML = '🗑️';
+            revokeBtn.style.color = '#ff3b30';
+            revokeBtn.onclick = () => { 
+                if (confirm("Thu hồi tin nhắn này?")) {
+                    const path = isSecureMode ? 'secure_rooms/' + currentSecureRoomPath : 'rooms/' + currentRoomDisplay;
+                    database.ref(path + '/' + msgId).remove();
+                }
+            };
+            actionsDiv.appendChild(revokeBtn);
+        }
+
+        actionsDiv.appendChild(replyBtn);
+        actionsDiv.appendChild(reactBtn);
+        wrapper.appendChild(actionsDiv);
+        // ----------------------------------------
 
         const reactDisplay = document.createElement('div');
         reactDisplay.id = 'reactions-' + msgId;
@@ -570,20 +673,14 @@
         
         if(data.reactions) updateReactionsUI(msgId, data.reactions);
 
+        // Gắn dòng thời gian có hiệu ứng tàng hình
         if (data.timestamp) {
-            const timeDiv = document.createElement('div'); timeDiv.className = 'msg-time';
-            timeDiv.textContent = formatTime(data.timestamp); wrapper.appendChild(timeDiv);
+            const timeDiv = document.createElement('div'); 
+            timeDiv.className = 'msg-time';
+            timeDiv.textContent = formatTime(data.timestamp); 
+            wrapper.appendChild(timeDiv);
         }
-        if (isMe) {
-            const revokeBtn = document.createElement('button'); revokeBtn.className = 'revoke-btn'; revokeBtn.textContent = '[ Thu hồi ]';
-            revokeBtn.onclick = () => { 
-                if (confirm("Thu hồi tin nhắn này?")) {
-                    const path = isSecureMode ? 'secure_rooms/' + currentSecureRoomPath : 'rooms/' + currentRoomDisplay;
-                    database.ref(path + '/' + msgId).remove();
-                }
-            };
-            wrapper.appendChild(revokeBtn);
-        }
+        
         chatBox.appendChild(wrapper); chatBox.scrollTop = chatBox.scrollHeight;
     }
 
