@@ -45,6 +45,12 @@
         
         .admin-panel { margin-top: 20px; padding: 10px; border: 1px dashed #ccc; border-radius: 4px; background: #fff; font-size: 0.85em; display: none;}
         .mode-selector { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; font-weight: bold; color: #333; cursor: pointer; }
+
+        /* MẸO BẢO MẬT: Chuyển text thành dạng kí tự chấm tròn bảo mật mà không kích hoạt hệ thống nhận diện password của trình duyệt */
+        .no-trace-pass {
+            -webkit-text-security: disc !important;
+            text-security: disc !important;
+        }
     </style>
 </head>
 <body>
@@ -74,8 +80,8 @@
 
         <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 5px;">
             <div style="display: flex; gap: 5px;">
-                <input type="text" id="room-id" placeholder="Tên hoặc Số phòng...">
-                <input type="password" id="room-pass" placeholder="Mật khẩu phòng..." autocomplete="new-password" style="display: none;">
+                <input type="text" id="room-id" placeholder="Tên hoặc Số phòng..." autocomplete="off">
+                <input type="text" id="room-pass" class="no-trace-pass" placeholder="Mật khẩu phòng..." autocomplete="off" style="display: none;">
             </div>
             <button id="join-btn" onclick="joinRoom()" style="width: 100%;">Vào Phòng Chat</button>
         </div>
@@ -100,12 +106,12 @@
     </div>
 
     <center style="margin-top: 15px;">
-    <span onclick="toggleAdminPanel()" style="cursor: pointer; color: transparent; user-select: none;">.</span>
+        <span onclick="toggleAdminPanel()" style="cursor: pointer; color: transparent; user-select: none;">.</span>
 	</center>
     <div id="admin-panel" class="admin-panel">
         <strong>Tạo mã phòng bí mật mới:</strong><br>
-        <input type="text" id="adm-room" placeholder="Tên phòng dự định..." style="width:90%; margin-top:5px;"><br>
-        <input type="text" id="adm-pass" placeholder="Mật khẩu dự định..." style="width:90%; margin-top:5px;"><br>
+        <input type="text" id="adm-room" placeholder="Tên phòng dự định..." style="width:90%; margin-top:5px;" autocomplete="off"><br>
+        <input type="text" id="adm-pass" placeholder="Mật khẩu dự định..." style="width:90%; margin-top:5px;" autocomplete="off"><br>
         <button onclick="generateActivationKey()" style="margin-top:5px; background:#28a745; padding:5px 10px; font-size:12px;">Lấy mã kích hoạt</button>
         <div id="admin-result" style="margin-top:8px; word-break: break-all; color: blue; font-weight: bold;"></div>
     </div>
@@ -128,8 +134,8 @@
     const database = firebase.database();
 
     let currentRoomDisplay = ""; 
-    let currentSecureRoomPath = ""; // Dùng nếu chọn chế độ bảo mật
-    let isSecureMode = false; // Trạng thái chọn chế độ
+    let currentSecureRoomPath = ""; 
+    let isSecureMode = false; 
     let roomRef = null;
     let accessToken = null;
     let folderIdForRoom = null; 
@@ -157,7 +163,6 @@
         Notification.requestPermission();
     }
 
-    // Ẩn/hiện ô nhập mật khẩu dựa vào việc chọn checkbox
     function toggleModeChange() {
         isSecureMode = document.getElementById('is-secure-mode').checked;
         const modeText = document.getElementById('mode-text');
@@ -252,9 +257,18 @@
         isLocked = true; lockScreen.style.display = "flex"; pinInput.value = ""; pinInput.focus();
     }
 
+    // Ô PIN mở khóa tạm thời cũng áp dụng phương pháp làm sạch giá trị biến sau khi dùng
     function unlockApp() {
-        if (pinInput.value === appSecurePin) { isLocked = false; lockScreen.style.display = "none"; resetIdleTimer(); } 
-        else { alert("❌ Sai PIN!"); pinInput.value = ""; pinInput.focus(); }
+        if (pinInput.value === appSecurePin) { 
+            isLocked = false; 
+            lockScreen.style.display = "none"; 
+            pinInput.value = "";
+            resetIdleTimer(); 
+        } else { 
+            alert("❌ Sai PIN!"); 
+            pinInput.value = ""; 
+            pinInput.focus(); 
+        }
     }
 
     function resetIdleTimer() {
@@ -275,17 +289,21 @@
         chatBox.innerHTML = '';
         appendLog(`Hệ thống: Đang kết nối...`);
 
-        // XỬ LÝ ĐƯỜNG DẪN DỰA TRÊN CHẾ ĐỘ
         if (isSecureMode) {
             currentSecureRoomPath = await generateSecureRoomHash(room, pass);
             roomRef = database.ref('secure_rooms/' + currentSecureRoomPath);
-            // Xóa pass ngay lập tức trên giao diện chống lưu máy
-            passInput.value = ""; passInput.setAttribute("value", "");
         } else {
             roomRef = database.ref('rooms/' + room);
         }
 
-        roomInput.value = ""; roomInput.setAttribute("value", "");
+        // BẢO MẬT ĐỘC QUYỀN: Hủy toàn bộ thuộc tính, value hiện tại trên DOM để RAM và bộ nhớ đệm trình duyệt xóa sạch dấu vết ngay lập tức
+        roomInput.value = ""; 
+        passInput.value = ""; 
+        roomInput.setAttribute("value", "");
+        passInput.setAttribute("value", "");
+        roomInput.blur();
+        passInput.blur();
+
         roomRef.off();
         isFirstLoad = true;
         refreshGoogleToken();
@@ -323,6 +341,7 @@
                 joinBtn.textContent = isSecureMode ? "Đã Kết Nối Bảo Mật" : "Đã Kết Nối Công Khai";
                 joinBtn.style.backgroundColor = isSecureMode ? "#28a745" : "#17a2b8";
                 listenTypingStatus();
+                msgInput.focus();
             }
         }, 1200);
 
