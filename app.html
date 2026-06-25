@@ -120,14 +120,12 @@
         </div>
     </div>
 
-    <!-- KHU VỰC THÔNG TIN VÀ ĐĂNG NHẬP -->
     <div class="status-box" id="main-status-box">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
             <strong id="connection-title">Đăng Nhập Phòng:</strong>
             <button id="set-pin-btn" onclick="setupPinCode()" style="background: #6c757d; font-size: 0.75em; padding: 4px 8px; color: white;">⚙️ Khóa (PIN)</button>
         </div>
         
-        <!-- Nhóm các thành phần đăng nhập (Sẽ bị ẩn đi khi vào phòng) -->
         <div id="login-ui-section">
             <label class="mode-selector" title="Bật/Tắt chế độ bảo mật">
                 <input type="checkbox" id="is-secure-mode" onchange="toggleModeChange()"> 
@@ -279,17 +277,30 @@
         document.getElementById('reply-preview-text').textContent = "";
     }
 
-    // --- TỐI ƯU CẬP NHẬT TRẠNG THÁI ĐÃ XEM (TRÁNH QUÁ TẢI FIREBASE) ---
+    // --- FIX LỖI LỆCH GIỜ KHI CẬP NHẬT TRẠNG THÁI ĐÃ XEM ---
     function updateMyReadStatus() {
         if (!roomRef || isFirstLoad || document.hidden) return;
-        if (readUpdateThrottler) return; // Nếu vừa gửi thì tạm dừng
+        if (readUpdateThrottler) return; 
         
         readUpdateThrottler = setTimeout(() => {
             const currentUserId = myId;
             const path = isSecureMode ? `secure_rooms/${currentSecureRoomPath}/read_status` : `rooms/${currentRoomDisplay}/read_status`;
-            database.ref(path + '/' + currentUserId).set(Date.now());
+            
+            // Lấy thời gian của tin nhắn mới nhất trên màn hình thay vì giờ hệ thống
+            let maxVisibleTs = Date.now(); 
+            const allMsgs = document.querySelectorAll('.msg-wrapper');
+            
+            if (allMsgs.length > 0) {
+                const lastMsg = allMsgs[allMsgs.length - 1];
+                const ts = parseInt(lastMsg.getAttribute('data-timestamp'));
+                if (!isNaN(ts)) {
+                    maxVisibleTs = ts + 1; 
+                }
+            }
+
+            database.ref(path + '/' + currentUserId).set(maxVisibleTs);
             readUpdateThrottler = null;
-        }, 1500); // Tối đa 1.5 giây mới gửi 1 lần
+        }, 1000); 
     }
 
     window.addEventListener('focus', updateMyReadStatus);
