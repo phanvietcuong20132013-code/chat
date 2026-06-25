@@ -13,20 +13,25 @@
         .msg-wrapper { display: flex; flex-direction: column; max-width: 75%; position: relative; margin-bottom: 5px; }
         .my-wrapper { align-self: flex-end; align-items: flex-end; }
         .their-wrapper { align-self: flex-start; align-items: flex-start; }
-        .msg { padding: 8px 12px; border-radius: 15px; word-wrap: break-word; font-weight: bold; font-size: 0.95em; width: fit-content; position: relative; }
+        
+        /* Font chữ được thu nhỏ lại tinh tế hơn */
+        .msg { padding: 8px 12px; border-radius: 15px; word-wrap: break-word; font-weight: bold; font-size: 0.9em; width: fit-content; position: relative; }
         .my-msg { background-color: #0084ff; color: white; border-bottom-right-radius: 2px; }
         .their-msg { background-color: #e4e6eb; color: #050505; border-bottom-left-radius: 2px; }
         
+        /* Trạng thái Đã xem */
+        .seen-status { font-size: 0.75em; color: #34a853; margin-top: 2px; margin-bottom: 2px; font-weight: normal; font-style: italic; opacity: 0.9; text-align: right; margin-right: 5px; }
+
         /* Hiệu ứng: Thời gian bị ẩn đi, chỉ bung ra mượt mà khi hover chuột */
         .msg-time { font-size: 0px; opacity: 0; color: #888; margin-top: 0; font-weight: normal; transition: all 0.2s ease-in-out; }
         .my-wrapper .msg-time { text-align: right; }
         .their-wrapper .msg-time { text-align: left; }
         .msg-wrapper:hover .msg-time { font-size: 0.7em; opacity: 1; margin-top: 3px; }
 
-        .sys-msg { text-align: center; color: #888; font-style: italic; margin: 5px 0; font-size: 0.9em; align-self: center; width: 100%; }
+        .sys-msg { text-align: center; color: #888; font-style: italic; margin: 5px 0; font-size: 0.85em; align-self: center; width: 100%; }
         .file-link { color: inherit; text-decoration: underline; display: block; margin-top: 3px; word-break: break-all; }
         input, button { padding: 10px; border-radius: 4px; border: 1px solid #ddd; }
-        input[type="text"], input[type="password"] { flex-grow: 1; }
+        input[type="text"], input[type="password"] { flex-grow: 1; font-size: 0.9em; }
         button { background: #0084ff; color: white; border: none; cursor: pointer; font-weight: bold; }
         button:hover { background: #0066cc; }
         .status-box { background: #e7f3ff; padding: 10px; border-radius: 4px; font-size: 0.9em; line-height: 1.5; }
@@ -50,7 +55,7 @@
 
         /* --- UI QUOTE (TRÍCH DẪN) --- */
         .quoted-msg {
-            font-size: 0.85em; background: rgba(0, 0, 0, 0.05); border-left: 3px solid rgba(0, 0, 0, 0.2);
+            font-size: 0.8em; background: rgba(0, 0, 0, 0.05); border-left: 3px solid rgba(0, 0, 0, 0.2);
             padding: 4px 8px; border-radius: 4px; margin-bottom: 5px; opacity: 0.9; display: -webkit-box;
             -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; font-weight: normal;
         }
@@ -205,7 +210,8 @@
     let idleTimer;
     let typingTimeout; 
     let activeReactMsgId = null;
-    let replyingToData = null; // Biến lưu dữ liệu đang được Reply
+    let replyingToData = null;
+    let partnerMaxReadTs = 0; // Biến lưu mốc thời gian đọc của đối tác
 
     const chatBox = document.getElementById('chat-box');
     const msgInput = document.getElementById('message-text');
@@ -226,7 +232,7 @@
         Notification.requestPermission();
     }
 
-    /* --- CÀI ĐẶT STICKER KHỔNG LỒ MỚI --- */
+    /* --- CÀI ĐẶT STICKER KHỔNG LỒ --- */
     const STICKER_LIST = [
         '😍', '😂', '😭', '😡', '👍', '🙏', '🎉', '💔', '💩', '👻', 
         '🤡', '👽', '🤖', '🎃', '😈', '💃', '🍻', '🔥', '🌟', '💯', 
@@ -251,7 +257,6 @@
         if (!roomRef) return;
         const currentUserId = localStorage.getItem("chat_my_id") || myId;
         const payload = { sender: currentUserId, text: stickerValue, type: 'sticker', timestamp: Date.now() };
-        // Nếu có trích dẫn tin nhắn cũ
         if (replyingToData) { payload.replyTo = replyingToData; }
         
         roomRef.push(payload);
@@ -261,7 +266,6 @@
         const path = isSecureMode ? `secure_typing/${currentSecureRoomPath}/${currentUserId}` : `typing/${currentRoomDisplay}/${currentUserId}`;
         database.ref(path).set(false);
     }
-    /* ----------------------- */
 
     /* --- TÍNH NĂNG REPLY --- */
     function openReply(text, type) {
@@ -277,8 +281,58 @@
         document.getElementById('reply-preview').style.display = 'none';
         document.getElementById('reply-preview-text').textContent = "";
     }
-    /* ----------------------- */
 
+    /* --- TÍNH NĂNG ĐÃ XEM (READ RECEIPT) --- */
+    function updateMyReadStatus() {
+        if (!roomRef || isFirstLoad || document.hidden) return;
+        const currentUserId = localStorage.getItem("chat_my_id") || myId;
+        const path = isSecureMode ? `secure_rooms/${currentSecureRoomPath}/read_status` : `rooms/${currentRoomDisplay}/read_status`;
+        database.ref(path + '/' + currentUserId).set(Date.now());
+    }
+
+    window.addEventListener('focus', updateMyReadStatus);
+    document.addEventListener('mousemove', updateMyReadStatus);
+    document.addEventListener('keyup', updateMyReadStatus);
+    document.addEventListener('click', updateMyReadStatus);
+
+    function listenReadStatus() {
+        const path = isSecureMode ? `secure_rooms/${currentSecureRoomPath}/read_status` : `rooms/${currentRoomDisplay}/read_status`;
+        database.ref(path).on('value', (snapshot) => {
+            const reads = snapshot.val();
+            if (!reads) return;
+            let maxPartnerRead = 0;
+            const myCurrentId = localStorage.getItem("chat_my_id") || myId;
+            Object.keys(reads).forEach(uid => {
+                if (uid !== myCurrentId && reads[uid] > maxPartnerRead) {
+                    maxPartnerRead = reads[uid];
+                }
+            });
+            partnerMaxReadTs = maxPartnerRead;
+            triggerSeenUIUpdate();
+        });
+    }
+
+    function triggerSeenUIUpdate() {
+        document.querySelectorAll('.seen-status').forEach(e => e.remove());
+        const myMsgs = document.querySelectorAll('.my-wrapper');
+        for(let i = myMsgs.length - 1; i >= 0; i--) {
+            const msgTs = parseInt(myMsgs[i].getAttribute('data-timestamp'));
+            if (!isNaN(msgTs) && msgTs <= partnerMaxReadTs) {
+                const seenElem = document.createElement('div');
+                seenElem.className = 'seen-status';
+                seenElem.innerHTML = '✔ Đã xem';
+                const msgBox = myMsgs[i].querySelector('.my-msg');
+                if (msgBox) {
+                    msgBox.insertAdjacentElement('afterend', seenElem);
+                } else {
+                    myMsgs[i].appendChild(seenElem);
+                }
+                break; // Chỉ hiện chữ "Đã xem" ở tin nhắn gửi cuối cùng được đọc
+            }
+        }
+    }
+
+    /* --- SETUP MÃ HÓA & GOOGLE DRIVE --- */
     function toggleModeChange() {
         isSecureMode = document.getElementById('is-secure-mode').checked;
         const modeText = document.getElementById('mode-text');
@@ -374,7 +428,7 @@
     }
 
     function unlockApp() {
-        if (pinInput.value === appSecurePin) { isLocked = false; lockScreen.style.display = "none"; resetIdleTimer(); } 
+        if (pinInput.value === appSecurePin) { isLocked = false; lockScreen.style.display = "none"; resetIdleTimer(); updateMyReadStatus(); } 
         else { alert("❌ Sai PIN!"); pinInput.value = ""; pinInput.focus(); }
     }
 
@@ -382,8 +436,11 @@
         clearTimeout(idleTimer);
         if (!isLocked) idleTimer = setTimeout(lockApp, 60000);
     }
-    window.onload = resetIdleTimer; window.onmousemove = resetIdleTimer; window.onmousedown = resetIdleTimer;
-    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") lockApp(); });
+    window.onload = resetIdleTimer; 
+    document.addEventListener("visibilitychange", () => { 
+        if (document.visibilityState === "hidden") lockApp(); 
+        else updateMyReadStatus();
+    });
 
     async function joinRoom() {
         const room = roomInput.value.trim();
@@ -394,6 +451,7 @@
 
         currentRoomDisplay = room;
         chatBox.innerHTML = '';
+        partnerMaxReadTs = 0;
         appendLog(`Hệ thống: Đang kết nối...`);
 
         if (isSecureMode) {
@@ -412,6 +470,9 @@
         let connectionFailed = false;
 
         roomRef.limitToLast(50).on('child_added', (snapshot) => {
+            const msgId = snapshot.key;
+            if (msgId === 'read_status') return; // Bỏ qua node trạng thái đọc
+            
             if (isFirstLoad && !connectionFailed) {
                 isFirstLoad = false;
                 chatBox.innerHTML = '';
@@ -422,11 +483,11 @@
                 joinBtn.textContent = isSecureMode ? "Đã Kết Nối Bảo Mật" : "Đã Kết Nối Công Khai";
                 joinBtn.style.backgroundColor = isSecureMode ? "#28a745" : "#17a2b8";
                 listenTypingStatus();
+                listenReadStatus(); // Kích hoạt lắng nghe Đã Xem
                 msgInput.focus();
             }
 
             const data = snapshot.val();
-            const msgId = snapshot.key;
             if(!data || data.system) return;
             
             const currentUserId = localStorage.getItem("chat_my_id") || myId;
@@ -437,6 +498,8 @@
                 if (document.hidden || isLocked) {
                     let notifText = data.type === 'file' ? `📁 File` : (data.type === 'sticker' ? `[Sticker]` : data.text);
                     new Notification(`💬 Có tin nhắn mới`, { body: notifText });
+                } else {
+                    updateMyReadStatus(); // Mở app là cập nhật đã xem ngay
                 }
             }
         }, (error) => {
@@ -449,9 +512,10 @@
         });
 
         roomRef.limitToLast(50).on('child_changed', (snapshot) => {
-            const data = snapshot.val();
             const msgId = snapshot.key;
-            updateReactionsUI(msgId, data.reactions);
+            if (msgId === 'read_status') return; // Bỏ qua node trạng thái đọc
+            const data = snapshot.val();
+            if (data && data.reactions) updateReactionsUI(msgId, data.reactions);
         });
 
         setTimeout(() => { 
@@ -465,6 +529,7 @@
                 joinBtn.textContent = isSecureMode ? "Đã Kết Nối Bảo Mật" : "Đã Kết Nối Công Khai";
                 joinBtn.style.backgroundColor = isSecureMode ? "#28a745" : "#17a2b8";
                 listenTypingStatus();
+                listenReadStatus(); // Kích hoạt lắng nghe Đã Xem
                 msgInput.focus();
             }
         }, 1500);
@@ -472,7 +537,9 @@
         refreshGoogleToken();
 
         roomRef.on('child_removed', (snapshot) => {
-            const elementToRemove = document.getElementById('wrapper-' + snapshot.key);
+            const msgId = snapshot.key;
+            if (msgId === 'read_status') return; 
+            const elementToRemove = document.getElementById('wrapper-' + msgId);
             if (elementToRemove) elementToRemove.innerHTML = `<div class="sys-msg" style="font-size:0.8em;">Tin nhắn đã được thu hồi</div>`;
         });
     }
@@ -515,7 +582,6 @@
     function thựcThiGửiDrive(file) {
         uploadStatus.textContent = "Đang tải file..."; fileInput.disabled = true;
         
-        // Lưu tạm giá trị reply trước khi fetch bất đồng bộ
         let currentReply = replyingToData;
         cancelReply(); 
 
@@ -546,7 +612,6 @@
         }).catch(err => { fileInput.disabled = false; });
     }
 
-    /* --- XỬ LÝ REACTION UI & LOGIC --- */
     function openReactionPicker(e, msgId) {
         e.stopPropagation();
         activeReactMsgId = msgId;
@@ -591,17 +656,19 @@
         }
         container.innerHTML = html;
     }
-    /* -------------------------------- */
 
     function createMessageElement(msgId, data, isMe) {
+        // Chặn trùng lặp tin nhắn
+        if (document.getElementById('wrapper-' + msgId)) return;
+
         const wrapper = document.createElement('div');
         wrapper.id = 'wrapper-' + msgId;
         wrapper.className = isMe ? 'msg-wrapper my-wrapper' : 'msg-wrapper their-wrapper';
+        wrapper.setAttribute('data-timestamp', data.timestamp || Date.now());
         
         const divBox = document.createElement('div');
         divBox.className = isMe ? 'msg my-msg' : 'msg their-msg';
 
-        // Xử lý Render Khung Trích dẫn (Quote)
         if (data.replyTo) {
             const quoteDiv = document.createElement('div');
             quoteDiv.className = 'quoted-msg';
@@ -626,25 +693,21 @@
 
         wrapper.appendChild(divBox);
 
-        // --- BỘ NÚT HÀNH ĐỘNG ẨN MỚI NÂNG CẤP ---
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'msg-actions';
 
-        // Nút Trả Lời (Reply)
         const replyBtn = document.createElement('button');
         replyBtn.className = 'action-btn';
         replyBtn.title = 'Trả lời';
         replyBtn.innerHTML = '↩️';
         replyBtn.onclick = () => openReply(data.text, data.type);
 
-        // Nút Biểu Cảm (Reaction)
         const reactBtn = document.createElement('button');
         reactBtn.className = 'action-btn';
         reactBtn.title = 'Biểu cảm';
         reactBtn.innerHTML = '☻';
         reactBtn.onclick = (e) => openReactionPicker(e, msgId);
 
-        // Nếu là tin nhắn của mình thì có thêm nút Thu hồi (Thùng rác)
         if (isMe) {
             const revokeBtn = document.createElement('button');
             revokeBtn.className = 'action-btn';
@@ -663,7 +726,6 @@
         actionsDiv.appendChild(replyBtn);
         actionsDiv.appendChild(reactBtn);
         wrapper.appendChild(actionsDiv);
-        // ----------------------------------------
 
         const reactDisplay = document.createElement('div');
         reactDisplay.id = 'reactions-' + msgId;
@@ -673,7 +735,6 @@
         
         if(data.reactions) updateReactionsUI(msgId, data.reactions);
 
-        // Gắn dòng thời gian có hiệu ứng tàng hình
         if (data.timestamp) {
             const timeDiv = document.createElement('div'); 
             timeDiv.className = 'msg-time';
@@ -681,11 +742,28 @@
             wrapper.appendChild(timeDiv);
         }
         
-        chatBox.appendChild(wrapper); chatBox.scrollTop = chatBox.scrollHeight;
+        // THUẬT TOÁN SẮP XẾP LẠI VỊ TRÍ TIN NHẮN THEO THỜI GIAN THỰC (CHỐNG LỖI HIỂN THỊ SAI KHI THU HỒI)
+        let inserted = false;
+        const children = chatBox.children;
+        for (let i = 0; i < children.length; i++) {
+            const childTs = parseInt(children[i].getAttribute('data-timestamp'));
+            if (!isNaN(childTs) && data.timestamp < childTs) {
+                chatBox.insertBefore(wrapper, children[i]);
+                inserted = true;
+                break;
+            }
+        }
+        if (!inserted) {
+            chatBox.appendChild(wrapper);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        triggerSeenUIUpdate(); // Quét lại chữ Đã xem khi có tin nhắn mới
     }
 
     function appendLog(text) {
         const div = document.createElement('div'); div.className = 'sys-msg'; div.textContent = text;
+        div.setAttribute('data-timestamp', Date.now());
         chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
     }
 
