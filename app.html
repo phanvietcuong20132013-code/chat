@@ -428,7 +428,7 @@
     // --- HÀM ẨN GIAO DIỆN ĐĂNG NHẬP SAU KHI VÀO PHÒNG ---
     function applyCleanUIOnSuccess() {
         document.getElementById('login-ui-section').style.display = 'none';
-        document.getElementById('connection-title').innerHTML = isSecureMode ? `🔒 Chat Bí Mật` : `💬 Phòng: ${currentRoomDisplay}`;
+        document.getElementById('connection-title').innerHTML = isSecureMode ? `🔒` : `💬 Phòng: ${currentRoomDisplay}`;
         
         const statusBox = document.getElementById('main-status-box');
         statusBox.style.background = 'transparent';
