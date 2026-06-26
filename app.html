@@ -206,7 +206,6 @@
     let appSecurePin = localStorage.getItem("chat_secure_pin") || "";
     let isLocked = false;
     let isFirstLoad = true;
-    let idleTimer;
     let typingTimeout; 
     let activeReactMsgId = null;
     let replyingToData = null;
@@ -399,7 +398,6 @@
         if (pinInput.value === appSecurePin) { 
             isLocked = false; 
             lockScreen.style.display = "none"; 
-            resetIdleTimer(); 
             updateMyReadStatus(); 
             
             // Tự động đưa trỏ chuột vào ô nhập tin nhắn nếu đã vào phòng
@@ -415,11 +413,6 @@
         }
     }
 
-    function resetIdleTimer() {
-        clearTimeout(idleTimer);
-        if (!isLocked) idleTimer = setTimeout(lockApp, 60000);
-    }
-    window.onload = resetIdleTimer; 
     document.addEventListener("visibilitychange", () => { 
         if (document.visibilityState === "hidden") lockApp(); 
         else updateMyReadStatus();
