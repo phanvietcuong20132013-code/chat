@@ -393,7 +393,6 @@
         isLocked = true; lockScreen.style.display = "flex"; pinInput.value = ""; pinInput.focus();
     }
 
-    // --- CẬP NHẬT HÀM NÀY ĐỂ TỰ ĐỘNG FOCUS VÀO Ô CHAT ---
     function unlockApp() {
         if (pinInput.value === appSecurePin) { 
             isLocked = false; 
@@ -413,6 +412,7 @@
         }
     }
 
+    // Sự kiện ẩn/hiện tab trình duyệt để kích hoạt khóa
     document.addEventListener("visibilitychange", () => { 
         if (document.visibilityState === "hidden") lockApp(); 
         else updateMyReadStatus();
@@ -455,8 +455,8 @@
         roomRef.off();
         isFirstLoad = true;
         let connectionFailed = false;
+        let initialScrollTimer; // Bộ đếm thời gian để gom cụm tin nhắn cũ và cuộn xuống đáy
 
-        
         roomRef.limitToLast(1000).on('child_added', (snapshot) => {
             const msgId = snapshot.key;
             if (msgId === 'read_status') return; 
@@ -473,6 +473,12 @@
             
             const currentUserId = myId;
             createMessageElement(msgId, data, (data.sender === currentUserId));
+
+            // Tự động cuộn xuống đáy sau khi loạt tin nhắn cũ ban đầu kết thúc việc nạp vào DOM
+            clearTimeout(initialScrollTimer);
+            initialScrollTimer = setTimeout(() => {
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }, 150);
 
             if (!isFirstLoad && data.sender !== currentUserId) {
                 notifSound.play().catch(e => {});
@@ -491,7 +497,6 @@
             }
         });
 
-        // BỎ LỆNH LIMITTOLAST Ở ĐÂY LUÔN
         roomRef.on('child_changed', (snapshot) => {
             const msgId = snapshot.key;
             if (msgId === 'read_status') return; 
@@ -506,6 +511,7 @@
                 appendLog(`Hệ thống: Đã vào phòng TRỐNG [${currentRoomDisplay}] thành công!`);
                 applyCleanUIOnSuccess(); // Ẩn giao diện nếu phòng trống
             }
+            chatBox.scrollTop = chatBox.scrollHeight; // Đảm bảo cuộn xuống đáy hoàn toàn
         }, 1500);
 
         roomRef.on('child_removed', (snapshot) => {
